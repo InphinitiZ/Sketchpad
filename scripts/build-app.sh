@@ -14,7 +14,7 @@ rm -rf "$app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 cp "$(swift build -c "$config" --show-bin-path)/Sketchpad" "$app/Contents/MacOS/"
 cp Support/Info.plist "$app/Contents/"
-cp -R Support/*.lproj "$app/Contents/Resources/"
+cp -R Support/*.lproj Support/AppIcon.icns "$app/Contents/Resources/"
 codesign --force --sign - "$app" >/dev/null
 
 echo "Built $app"

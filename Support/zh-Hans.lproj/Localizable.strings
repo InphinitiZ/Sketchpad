@@ -331,3 +331,8 @@
 "Go to the previous page in the picture." = "转到图片中的上一页。";
 "Go to the next page in the picture." = "转到图片中的下一页。";
 "Close print preview and return to your picture." = "关闭打印预览并返回到你的图片。";
+
+/* Keyboard drawing (Paint's strings 59536, 59539 and 59540, with the Mac's keys) */
+"Successfully placed on canvas" = "已成功放置在画布上";
+"Press the arrow keys to move the pointer. Use the space bar to use the current tool. Hold Shift while moving to go faster. Hold Option while moving to scroll the canvas." = "按箭头键移动光标。使用空格键激活当前工具。移动时按 Shift 键以提高速度。移动时按 Option 键以滚动画布。";
+"Press Return to place it on the canvas. Press Esc at any time to cancel. Press the arrow keys to move. Press Tab to switch between control points in clockwise order; Shift+Tab switches in counter-clockwise order." = "按 Return 键以提交到画布。按 Esc 键可随时取消。按箭头键移动。按 Tab 键可按顺时针顺序在控制点之间进行切换，按 Shift + Tab 键可按逆时针顺序切换。";

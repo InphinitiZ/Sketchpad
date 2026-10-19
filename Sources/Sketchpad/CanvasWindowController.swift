@@ -62,6 +62,7 @@ final class CanvasWindowController: NSWindowController {
         canvasView.onZoomRequest = { [weak self] zoomIn, center in
             self?.magnify(in: zoomIn, at: center)
         }
+        canvasView.onKeyboardScroll = { [weak self] dx, dy in self?.scrollByKeyboard(dx: dx, dy: dy) }
         canvasView.onWheelZoom = { [weak self] zoomIn, center in
             guard let self else { return }
             self.stepZoom(up: zoomIn, centeredAt: self.workspace.convert(center, from: self.canvasView))
@@ -379,6 +380,18 @@ final class CanvasWindowController: NSWindowController {
         let viewer = FullScreenViewer(image: image, screen: screen) { [weak self] in self?.fullScreen = nil }
         fullScreen = viewer
         viewer.show()
+    }
+
+    /// Option+arrows (Paint's Ctrl+arrows) scroll the picture by the keys' step in screen
+    /// points (`CImgWnd`'s scroll listener).
+    private func scrollByKeyboard(dx: CGFloat, dy: CGFloat) {
+        let clip = scrollView.contentView
+        let zoom = scrollView.magnification
+        var bounds = clip.bounds
+        bounds.origin.x += dx / zoom
+        bounds.origin.y += dy / zoom
+        clip.scroll(to: clip.constrainBoundsRect(bounds).origin)
+        scrollView.reflectScrolledClipView(clip)
     }
 
     // MARK: - Print preview

@@ -38,7 +38,9 @@
 		65B741A911560E335CA6B550 /* CanvasView+Image.swift in Sources */ = {isa = PBXBuildFile; fileRef = A852652CA8F5ED4235CEA6A8 /* CanvasView+Image.swift */; };
 		6701B7D183C1152E25C43183 /* ThumbnailPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = B18A9C98FBAD88D1826ACA38 /* ThumbnailPanel.swift */; };
 		6780BF352314AE615E07E292 /* ActiveShapeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C17EAB0E6C7BC4B0EE76198 /* ActiveShapeTests.swift */; };
+		6D067B5C5EE232926EDBD30A /* AppIcon.icns in Resources */ = {isa = PBXBuildFile; fileRef = 445BF94061A5FE9916A78D2E /* AppIcon.icns */; };
 		703A2D4BA58E838BFA135DF4 /* CanvasWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1596462BEED7F1B02CCF8DE /* CanvasWindowController.swift */; };
+		714A79D095024BAE25FCCB4D /* KeyboardDrawingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CC5BDAAE78472C090BEF8FD /* KeyboardDrawingTests.swift */; };
 		71B50E7CD31DCE22ED9A0BEA /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2BBBAD0F0B5211FFEEE7FF0 /* AppDelegate.swift */; };
 		787969F3BBA9BFE20587F1AF /* CanvasInteractionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D0121235ABA94611C50656D /* CanvasInteractionTests.swift */; };
 		7FCA63DF38474BB41A2118AC /* BrushTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8DCE79B21F15A770CA87725E /* BrushTests.swift */; };
@@ -61,6 +63,7 @@
 		C678965EAC727669771A872F /* PrintPreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = D84ED70E31287AB28DD1FF27 /* PrintPreview.swift */; };
 		C67F333E7AE2DA3D878720F7 /* CanvasWindowController+Ribbon.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44CD9DF1BA4F2E3D4399D64E /* CanvasWindowController+Ribbon.swift */; };
 		C778F012306F09611E4E04CE /* CanvasDocument+Saving.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4CECCBA1D7C0A9786107FEE /* CanvasDocument+Saving.swift */; };
+		C9D3FD1429567E35870565A7 /* KeyboardDrawing.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC4C4C29A0B1CB602A4A27A8 /* KeyboardDrawing.swift */; };
 		CCA1C758377E2CB7D7020412 /* DeviceImport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82FA7E05449F75DF579A3ADD /* DeviceImport.swift */; };
 		D07B483E4EFCEE0FA0C9DCED /* PaintCore.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 9AFC652E224291C305379101 /* PaintCore.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		D3CB86E05DDB0BC0E2E5E18B /* MediaToolTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F94DBAC31207674C49389854 /* MediaToolTests.swift */; };
@@ -158,10 +161,12 @@
 		2F0FFD9F87BCE68DC3916FEC /* Geometry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Geometry.swift; sourceTree = "<group>"; };
 		340CDFA67575813A76CA462B /* Gridlines.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Gridlines.swift; sourceTree = "<group>"; };
 		385F6A6B312420A614E5CC9F /* StatusBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusBar.swift; sourceTree = "<group>"; };
+		445BF94061A5FE9916A78D2E /* AppIcon.icns */ = {isa = PBXFileReference; lastKnownFileType = image.icns; path = AppIcon.icns; sourceTree = "<group>"; };
 		44CD9DF1BA4F2E3D4399D64E /* CanvasWindowController+Ribbon.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "CanvasWindowController+Ribbon.swift"; sourceTree = "<group>"; };
 		458B2A585A583649866FABFC /* Transform.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Transform.swift; sourceTree = "<group>"; };
 		4AEC8CD2C687C40C4199CF8E /* Preferences.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Preferences.swift; sourceTree = "<group>"; };
 		58F8BCF12628AA7C933D318B /* ImageCodec.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageCodec.swift; sourceTree = "<group>"; };
+		5CC5BDAAE78472C090BEF8FD /* KeyboardDrawingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardDrawingTests.swift; sourceTree = "<group>"; };
 		5DD2BA8021A3AB6880C16CF5 /* Bitmaps.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Bitmaps.swift; sourceTree = "<group>"; };
 		61F251C6E190427F961F738C /* Raster.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Raster.swift; sourceTree = "<group>"; };
 		65FA082A7F7C1AB8106C4350 /* ParityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ParityTests.swift; sourceTree = "<group>"; };
@@ -207,6 +212,7 @@
 		F94DBAC31207674C49389854 /* MediaToolTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaToolTests.swift; sourceTree = "<group>"; };
 		F9924410006EBF275B0DF2D0 /* LocalizationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalizationTests.swift; sourceTree = "<group>"; };
 		FB5A7A8F273DA17462CF0228 /* FileAndSettingsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileAndSettingsTests.swift; sourceTree = "<group>"; };
+		FC4C4C29A0B1CB602A4A27A8 /* KeyboardDrawing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardDrawing.swift; sourceTree = "<group>"; };
 		FE23C9E26A08504FF1D6B5EB /* CanvasWorkspace.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CanvasWorkspace.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -253,6 +259,7 @@
 		209AEF6F3A3A5A9AA32A094E /* Support */ = {
 			isa = PBXGroup;
 			children = (
+				445BF94061A5FE9916A78D2E /* AppIcon.icns */,
 				C27095242A77F2BB4E497074 /* Localizable.strings */,
 			);
 			path = Support;
@@ -298,6 +305,7 @@
 				2714B731DB48E205337BF216 /* EditorState.swift */,
 				340CDFA67575813A76CA462B /* Gridlines.swift */,
 				8882E3AA9CFC1F2CFCC8EE42 /* ImageProperties.swift */,
+				FC4C4C29A0B1CB602A4A27A8 /* KeyboardDrawing.swift */,
 				6DC609862A478EE7341F0A9E /* Localization.swift */,
 				DBFD804950410909B2E7ACFC /* main.swift */,
 				260CBFF0FB1D5ABC45F6E903 /* MainMenu.swift */,
@@ -337,6 +345,7 @@
 				7D0121235ABA94611C50656D /* CanvasInteractionTests.swift */,
 				FB5A7A8F273DA17462CF0228 /* FileAndSettingsTests.swift */,
 				C17B7110D05A60D1F9DA18DC /* HandleTests.swift */,
+				5CC5BDAAE78472C090BEF8FD /* KeyboardDrawingTests.swift */,
 				F9924410006EBF275B0DF2D0 /* LocalizationTests.swift */,
 				F94DBAC31207674C49389854 /* MediaToolTests.swift */,
 				65FA082A7F7C1AB8106C4350 /* ParityTests.swift */,
@@ -481,6 +490,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				6D067B5C5EE232926EDBD30A /* AppIcon.icns in Resources */,
 				C422CBEA246D945D1D6E4882 /* Localizable.strings in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -524,6 +534,7 @@
 				406300A695C4EA17866DD075 /* EditorState.swift in Sources */,
 				DAB486C6D01080CA252DEF89 /* Gridlines.swift in Sources */,
 				15A5E6F3C8D32EEA1E0C3E28 /* ImageProperties.swift in Sources */,
+				C9D3FD1429567E35870565A7 /* KeyboardDrawing.swift in Sources */,
 				1CB51938BDA5B35CEAA1D69E /* Localization.swift in Sources */,
 				38F2E4BBAB12915B2CB7667E /* MainMenu.swift in Sources */,
 				4468372029E192490878F08C /* Preferences.swift in Sources */,
@@ -565,6 +576,7 @@
 				787969F3BBA9BFE20587F1AF /* CanvasInteractionTests.swift in Sources */,
 				EFA8FA1568C44923CEC4C00B /* FileAndSettingsTests.swift in Sources */,
 				F9A81F3BC22478A749C5DF66 /* HandleTests.swift in Sources */,
+				714A79D095024BAE25FCCB4D /* KeyboardDrawingTests.swift in Sources */,
 				1C989E9AD39269A5177F9A13 /* LocalizationTests.swift in Sources */,
 				D3CB86E05DDB0BC0E2E5E18B /* MediaToolTests.swift in Sources */,
 				270BD0A44365BA86FB39283F /* ParityTests.swift in Sources */,

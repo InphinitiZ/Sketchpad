@@ -86,7 +86,8 @@ private func pngData(width: Int, height: Int, color: RGBA) throws -> Data {
         #expect(canvas.accessibilityRole() == .image)
         #expect(canvas.accessibilityLabel() == "Canvas, 800 × 600 px")
         state.tool = .fill
-        #expect(canvas.accessibilityHelp() == Tool.fill.title)
+        #expect(canvas.accessibilityHelp()?.hasPrefix(Tool.fill.title + "\n") == true)
+        #expect(canvas.accessibilityHelp()?.contains(localized("Press the arrow keys to move the pointer. Use the space bar to use the current tool. Hold Shift while moving to go faster. Hold Option while moving to scroll the canvas.")) == true)
         withExtendedLifetime(document) {}
     }
 }

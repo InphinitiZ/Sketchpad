@@ -65,6 +65,15 @@ final class CanvasView: NSView {
     var onZoomRequest: ((_ zoomIn: Bool, _ center: NSPoint) -> Void)?
     /// ⌘-scroll: one zoom step around the pointer.
     var onWheelZoom: ((_ zoomIn: Bool, _ center: NSPoint) -> Void)?
+    /// Option+arrows: scroll the picture by screen points.
+    var onKeyboardScroll: ((_ dx: CGFloat, _ dy: CGFloat) -> Void)?
+
+    /// Keyboard drawing (see `KeyboardDrawing`): the arrows' movement, the pointer they move,
+    /// where they last put it, and whether the space bar is holding the mouse button down.
+    lazy var arrowKeys = ArrowKeyMotion { [weak self] step in self?.keyboardStep(step) }
+    var pointer = Pointer.system
+    var keyboardPointer = CGPoint(x: 0.5, y: 0.5)
+    var isKeyboardButtonDown = false
 
     enum Drag {
         case stroke(Stroke)
@@ -334,10 +343,10 @@ final class CanvasView: NSView {
         localized(format: "Canvas, %ld × %ld px", document.bitmap.width, document.bitmap.height)
     }
 
-    override func accessibilityHelp() -> String? { state.tool.title }
+    override func accessibilityHelp() -> String? { state.tool.title + "\n" + keyboardHelp }
 
-    /// Tells VoiceOver users which tool a key press picked.
-    private func announce(_ text: String) {
+    /// Tells VoiceOver users what a key press did.
+    func announce(_ text: String) {
         NSAccessibility.post(element: self, notification: .announcementRequested, userInfo: [
             .announcement: text,
             .priority: NSAccessibilityPriorityLevel.medium.rawValue,
@@ -884,29 +893,27 @@ final class CanvasView: NSView {
         case 51 where selection != nil || activeShape != nil, 117 where selection != nil || activeShape != nil: // Delete, Forward Delete
             delete(nil)
             return
-        // Return draws the active shape for good (Paint's Ctrl+Space, which macOS keeps for
-        // switching input sources).
+        // Return draws the active shape for good, or places the selection on the picture
+        // (Paint's Ctrl+Space, which macOS keeps for switching input sources).
         case 36 where activeShape != nil, 76 where activeShape != nil:
             commitActiveShape()
+            return
+        case 36 where selection != nil && drag == nil, 76 where selection != nil && drag == nil:
+            placeSelectionFromKeyboard()
             return
         // Tab and Shift+Tab pick a handle to move with the arrows.
         case 48 where activeShape != nil || selection != nil:
             cycleKeyboardHandle(backwards: event.modifierFlags.contains(.shift))
             return
-        case 123...126 where keyboardHandle != nil && (activeShape != nil || selection != nil):
-            let step = event.modifierFlags.contains(.shift) ? 2 : 1
-            let (dx, dy) = [123: (-step, 0), 124: (step, 0), 125: (0, step), 126: (0, -step)][Int(event.keyCode)]!
-            moveKeyboardHandle(dx: dx, dy: dy)
+        // The arrows move the handle, shape or selection, or else the pointer, speeding up
+        // while held (see `ArrowKeyMotion`).
+        case 123...126 where event.modifierFlags.intersection([.command, .control]).isEmpty:
+            _ = arrowKeys.keyDown(event.keyCode)
             return
-        case 123 where activeShape != nil: moveActiveShape(dx: event.modifierFlags.contains(.shift) ? -2 : -1, dy: 0); return
-        case 124 where activeShape != nil: moveActiveShape(dx: event.modifierFlags.contains(.shift) ? 2 : 1, dy: 0); return
-        case 125 where activeShape != nil: moveActiveShape(dx: 0, dy: event.modifierFlags.contains(.shift) ? 2 : 1); return
-        case 126 where activeShape != nil: moveActiveShape(dx: 0, dy: event.modifierFlags.contains(.shift) ? -2 : -1); return
-        // Shift doubles the arrow keys' step, as in Paint.
-        case 123 where selection != nil: nudgeSelection(dx: event.modifierFlags.contains(.shift) ? -2 : -1, dy: 0); return
-        case 124 where selection != nil: nudgeSelection(dx: event.modifierFlags.contains(.shift) ? 2 : 1, dy: 0); return
-        case 125 where selection != nil: nudgeSelection(dx: 0, dy: event.modifierFlags.contains(.shift) ? 2 : 1); return
-        case 126 where selection != nil: nudgeSelection(dx: 0, dy: event.modifierFlags.contains(.shift) ? -2 : -1); return
+        // The space bar is the mouse button.
+        case 49 where plain:
+            pressKeyboardButton()
+            return
         default:
             break
         }
@@ -927,5 +934,20 @@ final class CanvasView: NSView {
             return
         }
         super.keyDown(with: event)
+    }
+
+    override func keyUp(with event: NSEvent) {
+        if arrowKeys.keyUp(event.keyCode) { return }
+        if event.keyCode == 49, isKeyboardButtonDown {
+            releaseKeyboardButton()
+            return
+        }
+        super.keyUp(with: event)
+    }
+
+    override func resignFirstResponder() -> Bool {
+        arrowKeys.stop()
+        releaseKeyboardButton()
+        return super.resignFirstResponder()
     }
 }

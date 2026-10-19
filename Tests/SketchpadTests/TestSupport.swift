@@ -13,6 +13,8 @@ final class Stage {
     let workspace: CanvasWorkspaceView
     let scrollView = NSScrollView(frame: NSRect(x: 0, y: 0, width: 1000, height: 800))
     let window: NSWindow
+    /// Stands in for the mouse pointer that keyboard drawing moves, in screen coordinates.
+    var pointerLocation = NSPoint(x: -100, y: -100)
 
     init() {
         canvas = CanvasView(document: document, state: state)
@@ -21,6 +23,22 @@ final class Stage {
         window = NSWindow(contentRect: scrollView.frame, styleMask: [.titled], backing: .buffered, defer: true)
         window.contentView = scrollView
         workspace.updateLayout()
+        canvas.pointer = Pointer(
+            location: { [unowned self] in self.pointerLocation },
+            warp: { [unowned self] in self.pointerLocation = $0 },
+            isAvailable: { _ in true }
+        )
+    }
+
+    /// Puts the stand-in pointer over the middle of pixel `p`.
+    func movePointer(to p: PixelPoint) {
+        pointerLocation = window.convertPoint(toScreen: canvas.convert(NSPoint(x: Double(p.x) + 0.5, y: Double(p.y) + 0.5), to: nil))
+    }
+
+    /// The pixel under the stand-in pointer.
+    var pointerPixel: PixelPoint {
+        let p = canvas.convert(window.convertPoint(fromScreen: pointerLocation), from: nil)
+        return PixelPoint(x: Int(p.x.rounded(.down)), y: Int(p.y.rounded(.down)))
     }
 
     var bitmap: Bitmap { document.bitmap }
@@ -49,13 +67,27 @@ final class Stage {
         send(.leftMouseUp, at: b, modifiers: modifiers)
     }
 
+    /// A key pressed and released.
     func press(_ characters: String, keyCode: UInt16 = 0, modifiers: NSEvent.ModifierFlags = []) {
-        let event = NSEvent.keyEvent(
-            with: .keyDown, location: .zero, modifierFlags: modifiers, timestamp: 0, windowNumber: window.windowNumber,
+        keyDown(characters, keyCode: keyCode, modifiers: modifiers)
+        keyUp(characters, keyCode: keyCode, modifiers: modifiers)
+    }
+
+    func keyDown(_ characters: String, keyCode: UInt16 = 0, modifiers: NSEvent.ModifierFlags = []) {
+        canvas.keyDown(with: keyEvent(.keyDown, characters, keyCode: keyCode, modifiers: modifiers))
+        settle()
+    }
+
+    func keyUp(_ characters: String, keyCode: UInt16 = 0, modifiers: NSEvent.ModifierFlags = []) {
+        canvas.keyUp(with: keyEvent(.keyUp, characters, keyCode: keyCode, modifiers: modifiers))
+        settle()
+    }
+
+    private func keyEvent(_ type: NSEvent.EventType, _ characters: String, keyCode: UInt16, modifiers: NSEvent.ModifierFlags) -> NSEvent {
+        NSEvent.keyEvent(
+            with: type, location: .zero, modifierFlags: modifiers, timestamp: 0, windowNumber: window.windowNumber,
             context: nil, characters: characters, charactersIgnoringModifiers: characters, isARepeat: false, keyCode: keyCode
         )!
-        canvas.keyDown(with: event)
-        settle()
     }
 
     /// Lets the run loop turn over so the undo manager closes its per-event group.

@@ -11,6 +11,8 @@
 	</array>
 	<key>CFBundleDisplayName</key>
 	<string>Sketchpad</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
 	<key>CFBundleExecutable</key>
 	<string>Sketchpad</string>
 	<key>CFBundleIdentifier</key>
