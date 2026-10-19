@@ -50,6 +50,17 @@
                ReferencedContainer = "container:Sketchpad.xcodeproj">
             </BuildableReference>
          </TestableReference>
+         <TestableReference
+            skipped = "NO"
+            parallelizable = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "0CBA2AAEBD909CDD1BBBDB3E"
+               BuildableName = "SketchpadTests.xctest"
+               BlueprintName = "SketchpadTests"
+               ReferencedContainer = "container:Sketchpad.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
       </Testables>
       <CommandLineArguments>
       </CommandLineArguments>

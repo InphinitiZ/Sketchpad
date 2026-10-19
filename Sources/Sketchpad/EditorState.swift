@@ -2,10 +2,13 @@ import AppKit
 import PaintCore
 
 enum Tool: Int, CaseIterable {
-    case pencil, eraser, fill, picker, magnifier, line, rectangle, ellipse
+    case select, freeFormSelect, text, pencil, eraser, fill, picker, magnifier, line, rectangle, ellipse
 
     var title: String {
         switch self {
+        case .select: "Rectangular Selection"
+        case .freeFormSelect: "Free-form Selection"
+        case .text: "Text"
         case .pencil: "Pencil"
         case .eraser: "Eraser"
         case .fill: "Fill with Color"
@@ -19,6 +22,9 @@ enum Tool: Int, CaseIterable {
 
     var symbolName: String {
         switch self {
+        case .select: "rectangle.dashed"
+        case .freeFormSelect: "lasso"
+        case .text: "textformat"
         case .pencil: "pencil"
         case .eraser: "eraser"
         case .fill: "drop.fill"
@@ -33,12 +39,14 @@ enum Tool: Int, CaseIterable {
     /// Paint's single-letter tool keys (from the ribbon tooltips).
     var shortcut: Character? {
         switch self {
+        case .select: "s"
+        case .text: "t"
         case .pencil: "p"
         case .eraser: "e"
         case .fill: "b"
         case .picker: "i"
         case .magnifier: "z"
-        case .line, .rectangle, .ellipse: nil
+        case .freeFormSelect, .line, .rectangle, .ellipse: nil
         }
     }
 
@@ -48,7 +56,7 @@ enum Tool: Int, CaseIterable {
         case .pencil: [1, 2, 3, 4]
         case .eraser: [4, 6, 8, 10]
         case .line, .rectangle, .ellipse: [1, 3, 5, 8]
-        case .fill, .picker, .magnifier: []
+        case .select, .freeFormSelect, .text, .fill, .picker, .magnifier: []
         }
     }
 
@@ -59,6 +67,31 @@ enum Tool: Int, CaseIterable {
         case .ellipse: .ellipse
         default: nil
         }
+    }
+
+    var isSelection: Bool { self == .select || self == .freeFormSelect }
+}
+
+struct TextStyle: Equatable {
+    var family = "Helvetica"
+    /// Size in points. Paint renders text at 96 dpi, so one point is 4/3 of a canvas pixel.
+    var points: CGFloat = 12
+    var bold = false
+    var italic = false
+    var underline = false
+    /// Paint's "Opaque" text background fills the box with color 2.
+    var opaque = false
+
+    static let pointSizes: [CGFloat] = [8, 9, 10, 11, 12, 14, 16, 18, 20, 22, 24, 26, 28, 36, 48, 72]
+
+    var pixelSize: CGFloat { points * 4 / 3 }
+
+    var font: NSFont {
+        var traits: NSFontTraitMask = []
+        if bold { traits.insert(.boldFontMask) }
+        if italic { traits.insert(.italicFontMask) }
+        return NSFontManager.shared.font(withFamily: family, traits: traits, weight: 5, size: pixelSize)
+            ?? NSFont.systemFont(ofSize: pixelSize)
     }
 }
 
@@ -78,6 +111,9 @@ final class EditorState {
     var primary: RGBA = .black { didSet { notify() } }
     var secondary: RGBA = .white { didSet { notify() } }
     var fillsShapes = false { didSet { notify() } }
+    /// When on, pixels of color 2 in a moved or pasted selection are see-through.
+    var transparentSelection = false { didSet { notify() } }
+    var textStyle = TextStyle() { didSet { notify() } }
 
     private var sizes: [Tool: Int] = [:]
     private var observers: [() -> Void] = []
@@ -89,6 +125,9 @@ final class EditorState {
             notify()
         }
     }
+
+    /// The see-through color for selections under the current settings.
+    var selectionTransparentColor: RGBA? { transparentSelection ? secondary : nil }
 
     func observe(_ observer: @escaping () -> Void) {
         observers.append(observer)

@@ -14,6 +14,12 @@ final class CanvasWindowController: NSWindowController {
     private var toolButtons: [Tool: NSButton] = [:]
     private let sizePopup = NSPopUpButton()
     private let fillCheckbox = NSButton(checkboxWithTitle: "Fill shapes", target: nil, action: nil)
+    private let transparentCheckbox = NSButton(checkboxWithTitle: "Transparent selection", target: nil, action: nil)
+    private let fontPopup = NSPopUpButton()
+    private let pointSizePopup = NSPopUpButton()
+    private let textStyleControl = NSSegmentedControl(labels: ["B", "I", "U"], trackingMode: .selectAny, target: nil, action: nil)
+    private let opaqueCheckbox = NSButton(checkboxWithTitle: "Opaque background", target: nil, action: nil)
+    private var textOptions = NSStackView()
     private let primarySwatch = ColorSwatch(size: 30)
     private let secondarySwatch = ColorSwatch(size: 30)
     /// Which swatch the shared color panel is editing.
@@ -34,7 +40,7 @@ final class CanvasWindowController: NSWindowController {
         window.center()
 
         document.onBitmapChange = { [weak self] rect in
-            self?.canvasView.bitmapDidChange(rect)
+            self?.canvasView.documentDidChangeBitmap(rect)
             self?.updateStatus()
         }
         canvasView.onCursorMove = { [weak self] p in
@@ -108,7 +114,9 @@ final class CanvasWindowController: NSWindowController {
     private func makeSidebar() -> NSView {
         var toolRows: [[NSView]] = []
         for pairStart in stride(from: 0, to: Tool.allCases.count, by: 2) {
-            toolRows.append(Tool.allCases[pairStart..<min(pairStart + 2, Tool.allCases.count)].map(makeToolButton))
+            var row = Tool.allCases[pairStart..<min(pairStart + 2, Tool.allCases.count)].map(makeToolButton) as [NSView]
+            if row.count < 2 { row.append(NSGridCell.emptyContentView) }
+            toolRows.append(row)
         }
         let toolGrid = NSGridView(views: toolRows)
         toolGrid.rowSpacing = 4
@@ -118,6 +126,9 @@ final class CanvasWindowController: NSWindowController {
         sizePopup.action = #selector(sizeChanged(_:))
         fillCheckbox.target = self
         fillCheckbox.action = #selector(fillToggled(_:))
+        transparentCheckbox.target = self
+        transparentCheckbox.action = #selector(toggleTransparentSelection(_:))
+        textOptions = makeTextOptions()
 
         primarySwatch.onClick = { [weak self] _ in self?.editColor(secondary: false) }
         secondarySwatch.onClick = { [weak self] _ in self?.editColor(secondary: true) }
@@ -143,7 +154,8 @@ final class CanvasWindowController: NSWindowController {
 
         let stack = NSStackView(views: [
             heading("Tools"), toolGrid,
-            heading("Size"), sizePopup, fillCheckbox,
+            heading("Size"), sizePopup, fillCheckbox, transparentCheckbox,
+            textOptions,
             heading("Colors"), colorPair, palette,
         ])
         stack.orientation = .vertical
@@ -151,7 +163,38 @@ final class CanvasWindowController: NSWindowController {
         stack.spacing = 8
         stack.edgeInsets = NSEdgeInsets(top: 12, left: 12, bottom: 12, right: 12)
         stack.setCustomSpacing(14, after: toolGrid)
-        stack.setCustomSpacing(14, after: fillCheckbox)
+        stack.setCustomSpacing(14, after: transparentCheckbox)
+        stack.setCustomSpacing(14, after: textOptions)
+        return stack
+    }
+
+    /// Font controls, shown only while the text tool is active.
+    private func makeTextOptions() -> NSStackView {
+        fontPopup.addItems(withTitles: NSFontManager.shared.availableFontFamilies)
+        fontPopup.target = self
+        fontPopup.action = #selector(textStyleChanged(_:))
+        fontPopup.widthAnchor.constraint(equalToConstant: 126).isActive = true
+        fontPopup.controlSize = .small
+
+        pointSizePopup.addItems(withTitles: TextStyle.pointSizes.map { "\(Int($0)) pt" })
+        pointSizePopup.target = self
+        pointSizePopup.action = #selector(textStyleChanged(_:))
+        pointSizePopup.controlSize = .small
+
+        textStyleControl.target = self
+        textStyleControl.action = #selector(textStyleChanged(_:))
+        textStyleControl.controlSize = .small
+        for (index, label) in ["Bold", "Italic", "Underline"].enumerated() {
+            textStyleControl.setToolTip(label, forSegment: index)
+        }
+
+        opaqueCheckbox.target = self
+        opaqueCheckbox.action = #selector(textStyleChanged(_:))
+
+        let stack = NSStackView(views: [heading("Text"), fontPopup, pointSizePopup, textStyleControl, opaqueCheckbox])
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 6
         return stack
     }
 
@@ -199,6 +242,16 @@ final class CanvasWindowController: NSWindowController {
 
         fillCheckbox.state = state.fillsShapes ? .on : .off
         fillCheckbox.isEnabled = state.tool == .rectangle || state.tool == .ellipse
+        transparentCheckbox.state = state.transparentSelection ? .on : .off
+
+        let text = state.textStyle
+        textOptions.isHidden = state.tool != .text
+        fontPopup.selectItem(withTitle: text.family)
+        if let index = TextStyle.pointSizes.firstIndex(of: text.points) { pointSizePopup.selectItem(at: index) }
+        for (index, on) in [text.bold, text.italic, text.underline].enumerated() {
+            textStyleControl.setSelected(on, forSegment: index)
+        }
+        opaqueCheckbox.state = text.opaque ? .on : .off
 
         primarySwatch.color = state.primary
         secondarySwatch.color = state.secondary
@@ -225,6 +278,24 @@ final class CanvasWindowController: NSWindowController {
 
     @objc private func fillToggled(_ sender: NSButton) {
         state.fillsShapes = sender.state == .on
+    }
+
+    /// Sidebar checkbox and Edit menu item.
+    @objc func toggleTransparentSelection(_ sender: Any?) {
+        state.transparentSelection.toggle()
+    }
+
+    @objc private func textStyleChanged(_ sender: Any?) {
+        var style = state.textStyle
+        style.family = fontPopup.titleOfSelectedItem ?? style.family
+        if TextStyle.pointSizes.indices.contains(pointSizePopup.indexOfSelectedItem) {
+            style.points = TextStyle.pointSizes[pointSizePopup.indexOfSelectedItem]
+        }
+        style.bold = textStyleControl.isSelected(forSegment: 0)
+        style.italic = textStyleControl.isSelected(forSegment: 1)
+        style.underline = textStyleControl.isSelected(forSegment: 2)
+        style.opaque = opaqueCheckbox.state == .on
+        state.textStyle = style
     }
 
     private func editColor(secondary: Bool) {
@@ -273,6 +344,15 @@ final class CanvasWindowController: NSWindowController {
             scrollView.magnification = next
         }
         updateStatus()
+    }
+}
+
+extension CanvasWindowController: NSMenuItemValidation {
+    func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        if menuItem.action == #selector(toggleTransparentSelection(_:)) {
+            menuItem.state = state.transparentSelection ? .on : .off
+        }
+        return true
     }
 }
 

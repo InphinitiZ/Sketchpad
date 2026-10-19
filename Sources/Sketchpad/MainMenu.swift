@@ -34,6 +34,15 @@ enum MainMenu {
         main.addItem(submenu("Edit", [
             item("Undo", Selector(("undo:")), "z"),
             item("Redo", Selector(("redo:")), "z", [.command, .shift]),
+            .separator(),
+            item("Cut", #selector(CanvasView.cut(_:)), "x"),
+            item("Copy", #selector(CanvasView.copy(_:)), "c"),
+            item("Paste", #selector(CanvasView.paste(_:)), "v"),
+            item("Delete", #selector(CanvasView.delete(_:))),
+            item("Select All", #selector(NSText.selectAll(_:)), "a"),
+            .separator(),
+            item("Crop to Selection", #selector(CanvasView.crop(_:)), "x", [.command, .shift]),
+            item("Transparent Selection", #selector(CanvasWindowController.toggleTransparentSelection(_:))),
         ]))
 
         main.addItem(submenu("View", [

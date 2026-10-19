@@ -37,6 +37,16 @@ targets:
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES
+  SketchpadTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources: [Tests/SketchpadTests]
+    dependencies:
+      - target: Sketchpad
+      - target: PaintCore
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
 schemes:
   Sketchpad:
     build:
@@ -45,4 +55,4 @@ schemes:
     run:
       config: Debug
     test:
-      targets: [PaintCoreTests]
+      targets: [PaintCoreTests, SketchpadTests]

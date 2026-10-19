@@ -10,5 +10,7 @@ let package = Package(
         .target(name: "PaintCore"),
         .executableTarget(name: "Sketchpad", dependencies: ["PaintCore"]),
         .testTarget(name: "PaintCoreTests", dependencies: ["PaintCore"]),
+        // AppKit-level tests: drive CanvasView with synthesized events, render real text.
+        .testTarget(name: "SketchpadTests", dependencies: ["Sketchpad", "PaintCore"]),
     ]
 )

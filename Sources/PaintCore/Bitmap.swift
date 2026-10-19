@@ -43,6 +43,13 @@ public final class Bitmap {
         context.restoreGState()
     }
 
+    /// A canvas holding `pixels`, row-major, `width * height` long.
+    public convenience init(width: Int, height: Int, pixels: [UInt32]) {
+        precondition(pixels.count == width * height)
+        self.init(width: width, height: height)
+        pixels.withUnsafeBufferPointer { storage.update(from: $0.baseAddress!, count: pixels.count) }
+    }
+
     deinit {
         storage.deallocate()
     }

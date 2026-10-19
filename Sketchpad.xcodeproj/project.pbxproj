@@ -7,9 +7,14 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		063C9385AB7822CAFAB55FF2 /* PaintCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 9AFC652E224291C305379101 /* PaintCore.framework */; };
+		11F94709C3E4F402AB71D74A /* TextBox.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1844626EB9B38FF98FAEE02E /* TextBox.swift */; };
+		175DBEE0E1EC56CC389A2094 /* CanvasView+Editing.swift in Sources */ = {isa = PBXBuildFile; fileRef = F42F7EFD89876440D66CF07E /* CanvasView+Editing.swift */; };
 		38F2E4BBAB12915B2CB7667E /* MainMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = 260CBFF0FB1D5ABC45F6E903 /* MainMenu.swift */; };
+		3AA65FC318D328DEC684A329 /* PaintCore.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 9AFC652E224291C305379101 /* PaintCore.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		406300A695C4EA17866DD075 /* EditorState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2714B731DB48E205337BF216 /* EditorState.swift */; };
 		41ACA573456E433E93DEBB6A /* Raster.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61F251C6E190427F961F738C /* Raster.swift */; };
+		42F138DDECA5CB457D1BD216 /* SelectionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F04E464CE2139BED39519998 /* SelectionTests.swift */; };
 		497BD38B66446DE5671C0E52 /* Shapes.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE6D00F6ABFAFA3C8392E704 /* Shapes.swift */; };
 		4DCCE2AFDF53209794C978E5 /* ImageCodec.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58F8BCF12628AA7C933D318B /* ImageCodec.swift */; };
 		548BA904C5FF2450C453EF9C /* Bitmap.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7450FA41FC116406B4B8DC3 /* Bitmap.swift */; };
@@ -17,7 +22,9 @@
 		5E09F94050FE53378208279E /* PaintCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 9AFC652E224291C305379101 /* PaintCore.framework */; };
 		703A2D4BA58E838BFA135DF4 /* CanvasWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1596462BEED7F1B02CCF8DE /* CanvasWindowController.swift */; };
 		71B50E7CD31DCE22ED9A0BEA /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2BBBAD0F0B5211FFEEE7FF0 /* AppDelegate.swift */; };
+		787969F3BBA9BFE20587F1AF /* CanvasInteractionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D0121235ABA94611C50656D /* CanvasInteractionTests.swift */; };
 		9C0F0574E5493239F447B6E0 /* PaintCore.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 9AFC652E224291C305379101 /* PaintCore.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		A763D8A7D5FE84A7D98B3365 /* Selection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74EF2CC3B208CB7717E1DD9A /* Selection.swift */; };
 		AD0B675035F806B0993B0087 /* PaintCoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC4953FA15F041AD14BD6520 /* PaintCoreTests.swift */; };
 		AF57EEC9768C87406B97C669 /* CanvasDocument.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABE57AAA34AC8B6752840F0F /* CanvasDocument.swift */; };
 		B95EBDEF2C618D8B8A0F98A3 /* Geometry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F0FFD9F87BCE68DC3916FEC /* Geometry.swift */; };
@@ -28,6 +35,20 @@
 
 /* Begin PBXContainerItemProxy section */
 		084BF2117A2536490EDDF20F /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 1AFD38FB308575A3F21B5D00 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = F59A4E4CF983F80BB693E69A;
+			remoteInfo = PaintCore;
+		};
+		39168601EE431D9E712CF383 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 1AFD38FB308575A3F21B5D00 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = B62022AA2E17DFF18AF3246D;
+			remoteInfo = Sketchpad;
+		};
+		E179A6ED562CC1401CA174BB /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 1AFD38FB308575A3F21B5D00 /* Project object */;
 			proxyType = 1;
@@ -66,16 +87,30 @@
 			name = "Embed Frameworks";
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		DDC947E3903BC9FE665BDA7A /* Embed Frameworks */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 10;
+			files = (
+				3AA65FC318D328DEC684A329 /* PaintCore.framework in Embed Frameworks */,
+			);
+			name = "Embed Frameworks";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		0EB58A715ABECE0A0F8431AA /* PaintCoreTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = PaintCoreTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		1844626EB9B38FF98FAEE02E /* TextBox.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextBox.swift; sourceTree = "<group>"; };
 		260CBFF0FB1D5ABC45F6E903 /* MainMenu.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainMenu.swift; sourceTree = "<group>"; };
 		2714B731DB48E205337BF216 /* EditorState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditorState.swift; sourceTree = "<group>"; };
 		2F0FFD9F87BCE68DC3916FEC /* Geometry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Geometry.swift; sourceTree = "<group>"; };
 		58F8BCF12628AA7C933D318B /* ImageCodec.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageCodec.swift; sourceTree = "<group>"; };
 		61F251C6E190427F961F738C /* Raster.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Raster.swift; sourceTree = "<group>"; };
 		74A1C02BC436487CB30DCB62 /* Sketchpad.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Sketchpad.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		74EF2CC3B208CB7717E1DD9A /* Selection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Selection.swift; sourceTree = "<group>"; };
+		7D0121235ABA94611C50656D /* CanvasInteractionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CanvasInteractionTests.swift; sourceTree = "<group>"; };
 		8AF9CA4D0417B10AB050A75C /* CanvasView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CanvasView.swift; sourceTree = "<group>"; };
 		9AFC652E224291C305379101 /* PaintCore.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = PaintCore.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		A1596462BEED7F1B02CCF8DE /* CanvasWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CanvasWindowController.swift; sourceTree = "<group>"; };
@@ -84,10 +119,21 @@
 		DBFD804950410909B2E7ACFC /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
 		DC4953FA15F041AD14BD6520 /* PaintCoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaintCoreTests.swift; sourceTree = "<group>"; };
 		DE6D00F6ABFAFA3C8392E704 /* Shapes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Shapes.swift; sourceTree = "<group>"; };
+		ECEC2431C4EB89695CA7EDF3 /* SketchpadTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SketchpadTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		F04E464CE2139BED39519998 /* SelectionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SelectionTests.swift; sourceTree = "<group>"; };
+		F42F7EFD89876440D66CF07E /* CanvasView+Editing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "CanvasView+Editing.swift"; sourceTree = "<group>"; };
 		F7450FA41FC116406B4B8DC3 /* Bitmap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Bitmap.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		5EACFBD650C1D3756D76D792 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				063C9385AB7822CAFAB55FF2 /* PaintCore.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		81BC0FF0023CDDA6BA35749E /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -113,6 +159,7 @@
 				2A45A41359878B67C9A87FA2 /* PaintCore */,
 				95D2F1B3887FCBEC8CCBEEA5 /* PaintCoreTests */,
 				85F036F878F1C63A86C123B1 /* Sketchpad */,
+				B7E5FB5B0533DDD99B5360E4 /* SketchpadTests */,
 				D3EC52A6840ADA1833EF7C8F /* Products */,
 			);
 			sourceTree = "<group>";
@@ -124,6 +171,7 @@
 				2F0FFD9F87BCE68DC3916FEC /* Geometry.swift */,
 				58F8BCF12628AA7C933D318B /* ImageCodec.swift */,
 				61F251C6E190427F961F738C /* Raster.swift */,
+				74EF2CC3B208CB7717E1DD9A /* Selection.swift */,
 				DE6D00F6ABFAFA3C8392E704 /* Shapes.swift */,
 			);
 			name = PaintCore;
@@ -136,10 +184,12 @@
 				D2BBBAD0F0B5211FFEEE7FF0 /* AppDelegate.swift */,
 				ABE57AAA34AC8B6752840F0F /* CanvasDocument.swift */,
 				8AF9CA4D0417B10AB050A75C /* CanvasView.swift */,
+				F42F7EFD89876440D66CF07E /* CanvasView+Editing.swift */,
 				A1596462BEED7F1B02CCF8DE /* CanvasWindowController.swift */,
 				2714B731DB48E205337BF216 /* EditorState.swift */,
 				DBFD804950410909B2E7ACFC /* main.swift */,
 				260CBFF0FB1D5ABC45F6E903 /* MainMenu.swift */,
+				1844626EB9B38FF98FAEE02E /* TextBox.swift */,
 			);
 			name = Sketchpad;
 			path = Sources/Sketchpad;
@@ -149,9 +199,19 @@
 			isa = PBXGroup;
 			children = (
 				DC4953FA15F041AD14BD6520 /* PaintCoreTests.swift */,
+				F04E464CE2139BED39519998 /* SelectionTests.swift */,
 			);
 			name = PaintCoreTests;
 			path = Tests/PaintCoreTests;
+			sourceTree = "<group>";
+		};
+		B7E5FB5B0533DDD99B5360E4 /* SketchpadTests */ = {
+			isa = PBXGroup;
+			children = (
+				7D0121235ABA94611C50656D /* CanvasInteractionTests.swift */,
+			);
+			name = SketchpadTests;
+			path = Tests/SketchpadTests;
 			sourceTree = "<group>";
 		};
 		D3EC52A6840ADA1833EF7C8F /* Products */ = {
@@ -160,6 +220,7 @@
 				9AFC652E224291C305379101 /* PaintCore.framework */,
 				0EB58A715ABECE0A0F8431AA /* PaintCoreTests.xctest */,
 				74A1C02BC436487CB30DCB62 /* Sketchpad.app */,
+				ECEC2431C4EB89695CA7EDF3 /* SketchpadTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -167,6 +228,27 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		0CBA2AAEBD909CDD1BBBDB3E /* SketchpadTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 1E2CFB8AC45DDD23402B26D9 /* Build configuration list for PBXNativeTarget "SketchpadTests" */;
+			buildPhases = (
+				E451BA958E3B585FE42547A1 /* Sources */,
+				5EACFBD650C1D3756D76D792 /* Frameworks */,
+				DDC947E3903BC9FE665BDA7A /* Embed Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				8497215B9EC219F5567E8EC2 /* PBXTargetDependency */,
+				13559867CC026BCFF3DFB82F /* PBXTargetDependency */,
+			);
+			name = SketchpadTests;
+			packageProductDependencies = (
+			);
+			productName = SketchpadTests;
+			productReference = ECEC2431C4EB89695CA7EDF3 /* SketchpadTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 		B62022AA2E17DFF18AF3246D /* Sketchpad */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = C51CDA79F7859F9DFD2762DA /* Build configuration list for PBXNativeTarget "Sketchpad" */;
@@ -252,6 +334,7 @@
 				F59A4E4CF983F80BB693E69A /* PaintCore */,
 				B62022AA2E17DFF18AF3246D /* Sketchpad */,
 				DA8C6768AC04E142005068AE /* PaintCoreTests */,
+				0CBA2AAEBD909CDD1BBBDB3E /* SketchpadTests */,
 			);
 		};
 /* End PBXProject section */
@@ -262,6 +345,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				AD0B675035F806B0993B0087 /* PaintCoreTests.swift in Sources */,
+				42F138DDECA5CB457D1BD216 /* SelectionTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -271,10 +355,12 @@
 			files = (
 				71B50E7CD31DCE22ED9A0BEA /* AppDelegate.swift in Sources */,
 				AF57EEC9768C87406B97C669 /* CanvasDocument.swift in Sources */,
+				175DBEE0E1EC56CC389A2094 /* CanvasView+Editing.swift in Sources */,
 				E53CC37A4E56B79482D7DF06 /* CanvasView.swift in Sources */,
 				703A2D4BA58E838BFA135DF4 /* CanvasWindowController.swift in Sources */,
 				406300A695C4EA17866DD075 /* EditorState.swift in Sources */,
 				38F2E4BBAB12915B2CB7667E /* MainMenu.swift in Sources */,
+				11F94709C3E4F402AB71D74A /* TextBox.swift in Sources */,
 				FBDA805789AAD1213E1148A4 /* main.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -287,13 +373,32 @@
 				B95EBDEF2C618D8B8A0F98A3 /* Geometry.swift in Sources */,
 				4DCCE2AFDF53209794C978E5 /* ImageCodec.swift in Sources */,
 				41ACA573456E433E93DEBB6A /* Raster.swift in Sources */,
+				A763D8A7D5FE84A7D98B3365 /* Selection.swift in Sources */,
 				497BD38B66446DE5671C0E52 /* Shapes.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		E451BA958E3B585FE42547A1 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				787969F3BBA9BFE20587F1AF /* CanvasInteractionTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
+		13559867CC026BCFF3DFB82F /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = F59A4E4CF983F80BB693E69A /* PaintCore */;
+			targetProxy = E179A6ED562CC1401CA174BB /* PBXContainerItemProxy */;
+		};
+		8497215B9EC219F5567E8EC2 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = B62022AA2E17DFF18AF3246D /* Sketchpad */;
+			targetProxy = 39168601EE431D9E712CF383 /* PBXContainerItemProxy */;
+		};
 		9F20246A3B8D39259FE5BF1C /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = F59A4E4CF983F80BB693E69A /* PaintCore */;
@@ -442,6 +547,23 @@
 			};
 			name = Debug;
 		};
+		0B84DD20F0195343A5E6CCF3 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.local.SketchpadTests;
+				SDKROOT = macosx;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Sketchpad.app/Contents/MacOS/Sketchpad";
+			};
+			name = Release;
+		};
 		14133AC875161017B1DCD948 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -536,6 +658,23 @@
 			};
 			name = Release;
 		};
+		DA747D47FAA5E0AFC597B17E /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.local.SketchpadTests;
+				SDKROOT = macosx;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Sketchpad.app/Contents/MacOS/Sketchpad";
+			};
+			name = Debug;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -544,6 +683,15 @@
 			buildConfigurations = (
 				05436E4079585A061662C73E /* Debug */,
 				038A375C8187DA066DC0871D /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		1E2CFB8AC45DDD23402B26D9 /* Build configuration list for PBXNativeTarget "SketchpadTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				DA747D47FAA5E0AFC597B17E /* Debug */,
+				0B84DD20F0195343A5E6CCF3 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;

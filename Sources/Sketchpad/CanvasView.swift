@@ -2,20 +2,37 @@ import AppKit
 import PaintCore
 
 /// Shows the document's bitmap at 1 unit per pixel (the enclosing scroll view does the zooming)
-/// and turns mouse input into tool operations.
+/// and turns mouse and keyboard input into tool operations.
 final class CanvasView: NSView {
-    private unowned let document: CanvasDocument
-    private let state: EditorState
+    unowned let document: CanvasDocument
+    let state: EditorState
     private var cachedImage: CGImage?
-    private var stroke: Stroke?
+    private var lastTool: Tool
+
+    /// The mouse drag in progress, if any.
+    var drag: Drag?
+    /// The current selection, from when it is made until it is deselected.
+    var selection: SelectionSession?
+    /// Undo title for the selection when it is committed ("Move", "Paste", …).
+    var selectionActionName = "Selection"
+    /// The open text box, if any.
+    var textBox: TextBox?
 
     /// Reports the pixel under the cursor, or `nil` when it leaves the canvas.
     var onCursorMove: ((PixelPoint?) -> Void)?
     var onZoomRequest: ((_ zoomIn: Bool, _ center: NSPoint) -> Void)?
 
-    /// A drag in progress. `before` is the whole canvas as it was at mouse-down, used both to
-    /// redraw rubber-band shapes and to build the undo snapshot once the drag ends.
-    private struct Stroke {
+    enum Drag {
+        case stroke(Stroke)
+        case marquee(start: PixelPoint, end: PixelPoint)
+        case lasso([PixelPoint])
+        case moveSelection(last: PixelPoint)
+        case textBox(start: PixelPoint, end: PixelPoint)
+    }
+
+    /// A pencil, eraser or shape drag. `before` is the whole canvas as it was at mouse-down, used
+    /// both to redraw rubber-band shapes and to build the undo snapshot once the drag ends.
+    struct Stroke {
         let tool: Tool
         let usesSecondary: Bool
         let start: PixelPoint
@@ -28,12 +45,15 @@ final class CanvasView: NSView {
     init(document: CanvasDocument, state: EditorState) {
         self.document = document
         self.state = state
+        lastTool = state.tool
         super.init(frame: NSRect(x: 0, y: 0, width: document.bitmap.width, height: document.bitmap.height))
         addTrackingArea(NSTrackingArea(
             rect: .zero,
             options: [.mouseMoved, .mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect],
             owner: self
         ))
+        state.observe { [weak self] in self?.stateDidChange() }
+        document.willWrite = { [weak self] in self?.finishInteractions() }
     }
 
     required init?(coder: NSCoder) {
@@ -51,16 +71,92 @@ final class CanvasView: NSView {
         if let rect { setNeedsDisplay(rect.cgRect) } else { needsDisplay = true }
     }
 
+    /// Called for changes made by the document itself (undo, redo, revert). When the whole
+    /// bitmap was swapped, a selection or text box would point at the old one, so drop them.
+    func documentDidChangeBitmap(_ rect: PixelRect?) {
+        if rect == nil {
+            selection = nil
+            drag = nil
+            cancelText()
+        }
+        bitmapDidChange(rect)
+    }
+
+    /// Commits whatever is in progress (selection, text) so the bitmap is final.
+    func finishInteractions() {
+        commitText()
+        commitSelection()
+    }
+
+    private func stateDidChange() {
+        if state.tool != lastTool {
+            if !state.tool.isSelection { commitSelection() }
+            if state.tool != .text { commitText() }
+            lastTool = state.tool
+            window?.invalidateCursorRects(for: self)
+        }
+        if let selection, selection.isFloating, selection.transparentColor != state.selectionTransparentColor {
+            bitmapDidChange(selection.setTransparentColor(state.selectionTransparentColor))
+        }
+        textBox?.apply(style: state.textStyle, color: state.primary, background: state.secondary)
+    }
+
+    // MARK: - Drawing
+
     override func draw(_ dirtyRect: NSRect) {
         guard let context = NSGraphicsContext.current?.cgContext else { return }
         if cachedImage == nil { cachedImage = document.bitmap.makeImage() }
-        guard let image = cachedImage else { return }
-        // Nearest-neighbor so zoomed-in pixels stay square.
-        context.interpolationQuality = .none
+        if let image = cachedImage {
+            // Nearest-neighbor so zoomed-in pixels stay square.
+            context.interpolationQuality = .none
+            context.saveGState()
+            context.translateBy(x: 0, y: bounds.height)
+            context.scaleBy(x: 1, y: -1)
+            context.draw(image, in: CGRect(origin: .zero, size: bounds.size))
+            context.restoreGState()
+        }
+        if let outline = overlayPath() {
+            drawMarchingAnts(outline, in: context)
+        }
+    }
+
+    /// The dashed outline to show: the drag in progress, else the selection or text box.
+    private func overlayPath() -> CGPath? {
+        switch drag {
+        case let .marquee(start, end), let .textBox(start, end):
+            return CGPath(rect: PixelRect(enclosing: start, end).cgRect, transform: nil)
+        case let .lasso(points):
+            let path = CGMutablePath()
+            path.addLines(between: points.map { CGPoint(x: CGFloat($0.x) + 0.5, y: CGFloat($0.y) + 0.5) })
+            return path
+        case .stroke, .moveSelection, nil:
+            break
+        }
+        if let textBox {
+            return CGPath(rect: textBox.textView.frame.insetBy(dx: -1, dy: -1), transform: nil)
+        }
+        guard let mask = selection?.mask else { return nil }
+        guard let outline = mask.outline else { return CGPath(rect: mask.rect.cgRect, transform: nil) }
+        let path = CGMutablePath()
+        path.addLines(between: outline.map {
+            CGPoint(x: CGFloat(mask.rect.x + $0.x) + 0.5, y: CGFloat(mask.rect.y + $0.y) + 0.5)
+        })
+        path.closeSubpath()
+        return path
+    }
+
+    /// One screen pixel wide at any zoom: white underneath, black dashes on top.
+    private func drawMarchingAnts(_ path: CGPath, in context: CGContext) {
+        let unit = 1 / (enclosingScrollView?.magnification ?? 1)
         context.saveGState()
-        context.translateBy(x: 0, y: bounds.height)
-        context.scaleBy(x: 1, y: -1)
-        context.draw(image, in: CGRect(origin: .zero, size: bounds.size))
+        context.setLineWidth(unit)
+        context.addPath(path)
+        context.setStrokeColor(.white)
+        context.strokePath()
+        context.addPath(path)
+        context.setStrokeColor(.black)
+        context.setLineDash(phase: 0, lengths: [4 * unit, 4 * unit])
+        context.strokePath()
         context.restoreGState()
     }
 
@@ -80,19 +176,19 @@ final class CanvasView: NSView {
     }
 
     override func mouseDragged(with event: NSEvent) {
-        drag(event)
+        dragged(event)
     }
 
     override func rightMouseDragged(with event: NSEvent) {
-        drag(event)
+        dragged(event)
     }
 
     override func mouseUp(with event: NSEvent) {
-        finishStroke()
+        ended()
     }
 
     override func rightMouseUp(with event: NSEvent) {
-        finishStroke()
+        ended()
     }
 
     override func mouseMoved(with event: NSEvent) {
@@ -113,12 +209,23 @@ final class CanvasView: NSView {
     }
 
     private func begin(_ event: NSEvent, secondary: Bool) {
-        window?.makeFirstResponder(self)
-        guard stroke == nil else { return }
+        guard drag == nil else { return }
         let p = pixel(for: event)
         let bitmap = document.bitmap
 
+        // Clicking the canvas outside an open text box places the text, and does nothing else.
+        if textBox != nil {
+            commitText()
+            return
+        }
+        window?.makeFirstResponder(self)
+        if !state.tool.isSelection { commitSelection() }
+
         switch state.tool {
+        case .select, .freeFormSelect:
+            beginSelectionDrag(at: p)
+        case .text:
+            drag = .textBox(start: p, end: p)
         case .picker:
             guard bitmap.contains(p) else { return }
             if secondary { state.secondary = bitmap[p] } else { state.primary = bitmap[p] }
@@ -131,19 +238,61 @@ final class CanvasView: NSView {
             commit(before: before, rect: filled, actionName: Tool.fill.title)
             bitmapDidChange(filled)
         case .pencil, .eraser, .line, .rectangle, .ellipse:
-            stroke = Stroke(tool: state.tool, usesSecondary: secondary, start: p, last: p, before: bitmap.copyPixels())
-            if state.tool.shapeKind == nil { extendStroke(to: p, constrained: false) }
+            let stroke = Stroke(tool: state.tool, usesSecondary: secondary, start: p, last: p, before: bitmap.copyPixels())
+            drag = .stroke(stroke)
+            if state.tool.shapeKind == nil { extend(stroke, to: p, constrained: false) }
         }
     }
 
-    private func drag(_ event: NSEvent) {
+    private func dragged(_ event: NSEvent) {
         let p = pixel(for: event)
         reportCursor(p)
-        extendStroke(to: p, constrained: event.modifierFlags.contains(.shift))
+        switch drag {
+        case let .stroke(stroke):
+            extend(stroke, to: p, constrained: event.modifierFlags.contains(.shift))
+        case let .marquee(start, _):
+            drag = .marquee(start: start, end: p)
+            needsDisplay = true
+        case var .lasso(points):
+            if points.last != p { points.append(p) }
+            drag = .lasso(points)
+            needsDisplay = true
+        case let .moveSelection(last):
+            drag = .moveSelection(last: p)
+            if let changed = selection?.move(dx: p.x - last.x, dy: p.y - last.y) { bitmapDidChange(changed) }
+            needsDisplay = true
+        case let .textBox(start, _):
+            drag = .textBox(start: start, end: p)
+            needsDisplay = true
+        case nil:
+            break
+        }
     }
 
-    private func extendStroke(to p: PixelPoint, constrained: Bool) {
-        guard var stroke else { return }
+    private func ended() {
+        let finished = drag
+        drag = nil
+        switch finished {
+        case let .stroke(stroke):
+            commit(before: stroke.before, rect: stroke.dirty, actionName: stroke.tool.title)
+        case let .marquee(start, end):
+            let rect = PixelRect(enclosing: start, end).intersection(document.bitmap.bounds)
+            // A click without a drag just deselects.
+            if start != end, !rect.isEmpty { select(SelectionMask(rect: rect)) }
+        case let .lasso(points):
+            if let mask = SelectionMask(polygon: points, within: document.bitmap.bounds) { select(mask) }
+        case let .textBox(start, end):
+            openTextBox(in: PixelRect(enclosing: start, end), dragged: start != end)
+        case .moveSelection, nil:
+            break
+        }
+        needsDisplay = true
+    }
+
+    // MARK: - Strokes
+
+    private func extend(_ stroke: Stroke, to p: PixelPoint, constrained: Bool) {
+        var stroke = stroke
         let bitmap = document.bitmap
         let changed: PixelRect
 
@@ -167,24 +316,18 @@ final class CanvasView: NSView {
         }
 
         stroke.dirty = stroke.dirty.union(changed)
-        self.stroke = stroke
+        drag = .stroke(stroke)
         bitmapDidChange(changed)
     }
 
-    private func finishStroke() {
-        guard let stroke else { return }
-        self.stroke = nil
-        commit(before: stroke.before, rect: stroke.dirty, actionName: stroke.tool.title)
-    }
-
-    private func cancelStroke() {
-        guard let stroke else { return }
-        self.stroke = nil
+    func cancelStroke() {
+        guard case let .stroke(stroke) = drag else { return }
+        drag = nil
         document.bitmap.restore(stroke.dirty, from: stroke.before)
         bitmapDidChange(stroke.dirty)
     }
 
-    private func commit(before: [UInt32], rect: PixelRect, actionName: String) {
+    func commit(before: [UInt32], rect: PixelRect, actionName: String) {
         let rect = rect.intersection(document.bitmap.bounds)
         guard !rect.isEmpty else { return }
         document.registerEdit(document.bitmap.snapshot(rect, from: before), actionName: actionName)
@@ -196,29 +339,122 @@ final class CanvasView: NSView {
 
     /// Left drag: outline in color 1, fill in color 2. Right drag swaps them.
     private func shapeStyle(for stroke: Stroke) -> ShapeStyle {
-        let outline = drawingColor(for: stroke)
         let fill = stroke.usesSecondary ? state.primary : state.secondary
         return ShapeStyle(
-            outline: outline,
+            outline: drawingColor(for: stroke),
             fill: state.fillsShapes && stroke.tool != .line ? fill : nil,
             lineWidth: state.size
         )
     }
 
+    // MARK: - Selection
+
+    private func beginSelectionDrag(at p: PixelPoint) {
+        if let selection, selection.mask.contains(p) {
+            liftSelection()
+            drag = .moveSelection(last: p)
+            return
+        }
+        commitSelection()
+        drag = state.tool == .select ? .marquee(start: p, end: p) : .lasso([p])
+    }
+
+    func select(_ mask: SelectionMask) {
+        selection = SelectionSession(bitmap: document.bitmap, mask: mask)
+        selectionActionName = "Move Selection"
+        needsDisplay = true
+    }
+
+    /// Picks the selected pixels up so they can move; the hole is filled with color 2.
+    func liftSelection() {
+        guard let selection, !selection.isFloating else { return }
+        selection.lift(background: state.secondary, transparent: state.selectionTransparentColor)
+        bitmapDidChange(selection.mask.rect)
+    }
+
+    /// Deselects, recording everything the selection changed as one undo step.
+    func commitSelection() {
+        guard let selection else { return }
+        self.selection = nil
+        commit(before: selection.before, rect: selection.dirty, actionName: selectionActionName)
+        needsDisplay = true
+    }
+
+    func nudgeSelection(dx: Int, dy: Int) {
+        guard let selection else { return }
+        liftSelection()
+        bitmapDidChange(selection.move(dx: dx, dy: dy))
+        needsDisplay = true
+    }
+
+    // MARK: - Text
+
+    private func openTextBox(in rect: PixelRect, dragged: Bool) {
+        let style = state.textStyle
+        let lineHeight = NSLayoutManager().defaultLineHeight(for: style.font).rounded(.up)
+        var frame = rect.cgRect
+        if !dragged || frame.width < 16 {
+            // A plain click makes a box wide enough for a few words.
+            frame.size = CGSize(width: 200, height: lineHeight)
+        }
+        frame.size.height = max(frame.height, lineHeight)
+
+        let box = TextBox(frame: frame, style: style, color: state.primary, background: state.secondary)
+        box.onCancel = { [weak self] in self?.cancelText() }
+        box.onChange = { [weak self] in self?.needsDisplay = true }
+        addSubview(box.textView)
+        textBox = box
+        window?.makeFirstResponder(box.textView)
+    }
+
+    /// Draws the open text box into the bitmap as one undo step.
+    func commitText() {
+        guard let box = textBox else { return }
+        textBox = nil
+        box.textView.removeFromSuperview()
+        needsDisplay = true
+        window?.makeFirstResponder(self)
+        guard !box.isEmpty else { return }
+
+        let bitmap = document.bitmap
+        let before = bitmap.copyPixels()
+        let area = box.render(into: bitmap, opaque: state.textStyle.opaque, background: state.secondary)
+        commit(before: before, rect: area, actionName: Tool.text.title)
+        bitmapDidChange(area)
+    }
+
+    func cancelText() {
+        guard let box = textBox else { return }
+        textBox = nil
+        box.textView.removeFromSuperview()
+        needsDisplay = true
+        window?.makeFirstResponder(self)
+    }
+
     // MARK: - Keyboard
 
     override func keyDown(with event: NSEvent) {
-        if event.keyCode == 53, stroke != nil { // Escape
-            cancelStroke()
+        let plain = event.modifierFlags.intersection([.command, .control, .option]).isEmpty
+        switch event.keyCode {
+        case 53: // Escape
+            if case .stroke = drag { cancelStroke() } else { commitSelection() }
+            return
+        case 51 where selection != nil, 117 where selection != nil: // Delete, Forward Delete
+            delete(nil)
+            return
+        case 123 where selection != nil: nudgeSelection(dx: -1, dy: 0); return
+        case 124 where selection != nil: nudgeSelection(dx: 1, dy: 0); return
+        case 125 where selection != nil: nudgeSelection(dx: 0, dy: 1); return
+        case 126 where selection != nil: nudgeSelection(dx: 0, dy: -1); return
+        default:
+            break
+        }
+        if plain,
+           let key = event.charactersIgnoringModifiers?.lowercased().first,
+           let tool = Tool.allCases.first(where: { $0.shortcut == key }) {
+            state.tool = tool
             return
         }
-        guard event.modifierFlags.intersection([.command, .control, .option]).isEmpty,
-              let key = event.charactersIgnoringModifiers?.lowercased().first,
-              let tool = Tool.allCases.first(where: { $0.shortcut == key })
-        else {
-            super.keyDown(with: event)
-            return
-        }
-        state.tool = tool
+        super.keyDown(with: event)
     }
 }
