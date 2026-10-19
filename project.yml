@@ -1,0 +1,48 @@
+# XcodeGen spec. Regenerate the Xcode project with:  xcodegen generate
+name: Sketchpad
+options:
+  bundleIdPrefix: dev.local
+  deploymentTarget:
+    macOS: "14.0"
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MACOSX_DEPLOYMENT_TARGET: "14.0"
+targets:
+  PaintCore:
+    type: framework
+    platform: macOS
+    sources: [Sources/PaintCore]
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: dev.local.PaintCore
+  Sketchpad:
+    type: application
+    platform: macOS
+    sources: [Sources/Sketchpad]
+    dependencies:
+      - target: PaintCore
+    settings:
+      base:
+        INFOPLIST_FILE: Support/Info.plist
+        PRODUCT_BUNDLE_IDENTIFIER: dev.local.Sketchpad
+        CODE_SIGN_IDENTITY: "-"
+  PaintCoreTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources: [Tests/PaintCoreTests]
+    dependencies:
+      - target: PaintCore
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+schemes:
+  Sketchpad:
+    build:
+      targets:
+        Sketchpad: all
+    run:
+      config: Debug
+    test:
+      targets: [PaintCoreTests]
