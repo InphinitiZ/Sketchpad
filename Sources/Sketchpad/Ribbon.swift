@@ -151,8 +151,10 @@ final class RibbonButton: NSControl {
         }
     }
 
+    /// The part that acts when clicked: all of it, except a split button's menu part.
     private var mainPart: NSRect {
-        switch size {
+        guard case .split = kind else { return bounds }
+        return switch size {
         case .large: NSRect(x: 0, y: 0, width: bounds.width, height: 40)
         case .small, .iconOnly: NSRect(x: 0, y: 0, width: bounds.width - 12, height: bounds.height)
         }

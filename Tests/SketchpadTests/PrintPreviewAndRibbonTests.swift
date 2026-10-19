@@ -210,3 +210,62 @@ private func letter(centered: Bool = true) -> NSPrintInfo {
         ribbon.select(0)
     }
 }
+
+/// Hands a button's tracking loop the events queued here instead of the app's event queue.
+private final class ClickWindow: NSWindow {
+    var pending: [NSEvent] = []
+
+    override func nextEvent(matching mask: NSEvent.EventTypeMask) -> NSEvent? {
+        pending.isEmpty ? nil : pending.removeFirst()
+    }
+}
+
+@MainActor
+@Suite(.serialized) struct RibbonButtonTests {
+    fileprivate let window = ClickWindow(contentRect: NSRect(x: 0, y: 0, width: 200, height: 100), styleMask: .titled, backing: .buffered, defer: true)
+
+    /// Clicks `button` `x` points from its left edge; the press tracks until the release.
+    private func click(_ button: RibbonButton, atX x: CGFloat) {
+        window.contentView?.addSubview(button)
+        button.frame = NSRect(origin: NSPoint(x: 10, y: 10), size: button.intrinsicContentSize)
+        let point = button.convert(NSPoint(x: x, y: button.bounds.midY), to: nil)
+        func event(_ type: NSEvent.EventType) -> NSEvent {
+            NSEvent.mouseEvent(with: type, location: point, modifierFlags: [], timestamp: 0, windowNumber: window.windowNumber,
+                               context: nil, eventNumber: 0, clickCount: 1, pressure: 1)!
+        }
+        window.pending = [event(.leftMouseUp)]
+        button.mouseDown(with: event(.leftMouseDown))
+        button.removeFromSuperview()
+    }
+
+    @Test func toolButtonsActAcrossTheirWholeWidth() {
+        for x: CGFloat in [2, 12, 22] {
+            var presses = 0
+            let button = RibbonButton(title: "Pencil", image: nil, size: .iconOnly, kind: .toggle) { presses += 1 }
+            click(button, atX: x)
+            #expect(presses == 1, "clicked \(x) points in")
+            #expect(button.isOn)
+        }
+    }
+
+    @Test func smallButtonsActUpToTheirRightEdge() {
+        var presses = 0
+        let button = RibbonButton(title: "Copy", image: nil, size: .small) { presses += 1 }
+        click(button, atX: button.intrinsicContentSize.width - 3)
+        #expect(presses == 1)
+    }
+
+    @Test func splitButtonsActOnlyFromTheirMainPart() {
+        var presses = 0
+        let button = RibbonButton(title: "Paste", image: nil, size: .large, kind: .split({ NSMenu() })) { presses += 1 }
+        window.contentView?.addSubview(button)
+        button.frame = NSRect(origin: NSPoint(x: 10, y: 10), size: button.intrinsicContentSize)
+        let up = NSEvent.mouseEvent(with: .leftMouseUp, location: button.convert(NSPoint(x: 5, y: 60), to: nil), modifierFlags: [],
+                                    timestamp: 0, windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1)!
+        window.pending = [up]
+        let down = NSEvent.mouseEvent(with: .leftMouseDown, location: button.convert(NSPoint(x: 5, y: 10), to: nil), modifierFlags: [],
+                                      timestamp: 0, windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1)!
+        button.mouseDown(with: down)
+        #expect(presses == 0, "released over the label, which opens the menu")
+    }
+}
