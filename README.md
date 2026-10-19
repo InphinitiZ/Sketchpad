@@ -1,6 +1,12 @@
 # Sketchpad
 
-经典画图（Windows 7 起的 Ribbon 版 mspaint）的 macOS 原生复刻（名字是占位）。界面照原版的功能区（Ribbon）布局：“文件”按钮、主页、查看和使用文字工具时出现的“文本”选项卡，分组、命令和顺序取自解码出来的 `UIFILE_MSPAINT`；交互细节按反编译结果实现。纹理笔刷的纹理、图标和光标都是本项目自己绘制的，没有使用微软的资源。应用图标是本地的 Codex 按设计说明画的原创图案（蓝色圆角底、白纸、珊瑚色笔触和铅笔）。
+经典画图（Windows 7 起的 Ribbon 版 mspaint）的 macOS 原生复刻。界面照原版的功能区（Ribbon）布局：“文件”按钮、主页、查看和使用文字工具时出现的“文本”选项卡，分组、命令和顺序取自解码出来的 `UIFILE_MSPAINT`；交互细节按反编译结果实现。纹理笔刷的纹理、图标和光标都是本项目自己绘制的，没有使用微软的资源。应用图标是本地的 Codex 按设计说明画的原创图案（蓝色圆角底、白纸、珊瑚色笔触和铅笔）。
+
+## 下载
+
+在 [Releases](https://github.com/InphinitiZ/Sketchpad/releases) 下载 `Sketchpad-<版本>.zip`，解压后把 Sketchpad 拖进“应用程序”文件夹。需要 macOS 14 或更新版本，Apple 芯片和 Intel 芯片的 Mac 都能用。
+
+app 没有用 Apple 开发者证书签名和公证，第一次打开时 macOS 会拦下来：双击一次，在提示里点“完成”，再到“系统设置 > 隐私与安全性”页面底部点“仍要打开”。也可以在终端运行 `xattr -dr com.apple.quarantine /Applications/Sketchpad.app` 后直接打开。
 
 ## 构建
 
@@ -9,8 +15,9 @@
 只有 Command Line Tools：
 
 ```sh
-scripts/build-app.sh   # 生成 build/Sketchpad.app
-scripts/test.sh        # 跑全部测试
+scripts/build-app.sh         # 生成 build/Sketchpad.app（只含本机架构）
+scripts/package-release.sh   # 生成 Apple 芯片和 Intel 通用的 app，打包成 build/Sketchpad-<版本>.zip
+scripts/test.sh              # 跑全部测试
 ```
 
 `scripts/make-icon.sh` 从 `Artwork/AppIcon/render.swift` 重新渲染应用图标并生成 `Support/AppIcon.icns`（结果逐字节可复现）。
@@ -30,7 +37,7 @@ scripts/test.sh        # 跑全部测试
 
 ## 和原版对齐的行为
 
-依据《Windows 画图移植 macOS 分析》里的反编译结果：
+依据对原版 mspaint.exe 的反编译分析：
 
 - 油漆桶：精确颜色匹配，四连通，没有容差。
 - 铅笔和橡皮：硬边方形笔头；橡皮涂的是颜色 2。
@@ -81,3 +88,7 @@ scripts/test.sh        # 跑全部测试
 - 菜单栏保留，Ribbon 控件用 macOS 外观；折叠后的分组用 NSPopover 弹出。
 - 打开的图片会拼合到白底上，所以不会出现原版“透明度将丢失”的提示。
 - 键盘绘图时，原版的空格键是系统级的鼠标按下，指针停在 Ribbon 上也会点下去；这里空格键只作用于画布，指针不在画面上时先跳回画布。
+
+## 许可证
+
+[GPL-3.0](LICENSE)。本项目与微软公司无关，Windows 和 Microsoft Paint 是微软公司的商标。
