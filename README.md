@@ -1,6 +1,6 @@
 # Sketchpad
 
-经典画图的 macOS 原生移植，目前完成到第 2 阶段的选区和文字工具（名字是占位）。
+经典画图的 macOS 原生移植，目前完成到第 2 阶段：选区、文字工具、旋转翻转、调整大小和倾斜（名字是占位）。
 
 ## 构建
 
@@ -17,8 +17,8 @@ scripts/test.sh        # 跑全部测试
 
 ## 结构
 
-- `Sources/PaintCore`：像素模型和算法，不依赖 AppKit。`Bitmap` 是左上角原点的 RGBA8 位图，`Raster` 是铅笔、橡皮和油漆桶的硬边算法，`Shapes` 用 Core Graphics 画抗锯齿形状，`Selection` 是选区遮罩和浮动选区，`ImageCodec` 负责 PNG、JPEG、BMP 读写。
-- `Sources/Sketchpad`：AppKit 外壳。`CanvasDocument`（NSDocument，负责撤销）、`CanvasView`（画布、鼠标、选区和文字交互）、`CanvasView+Editing`（剪切、复制、粘贴、裁剪、撤销）、`TextBox`（文字工具的编辑框和栅格化）、`CanvasWindowController`（侧栏、缩放、状态栏）、`MainMenu`（代码构建的菜单栏）。
+- `Sources/PaintCore`：像素模型和算法，不依赖 AppKit。`Bitmap` 是左上角原点的 RGBA8 位图，`Raster` 是铅笔、橡皮和油漆桶的硬边算法，`Shapes` 用 Core Graphics 画抗锯齿形状，`Selection` 是选区遮罩和浮动选区，`Transform` 是旋转、翻转、缩放和倾斜，`ImageCodec` 负责 PNG、JPEG、BMP 读写。
+- `Sources/Sketchpad`：AppKit 外壳。`CanvasDocument`（NSDocument，负责撤销）、`CanvasView`（画布、鼠标、选区和文字交互）、`CanvasView+Editing`（剪切、复制、粘贴、裁剪、撤销）、`CanvasView+Image`（图像菜单和“调整大小和倾斜”对话框）、`TextBox`（文字工具的编辑框和栅格化）、`CanvasWindowController`（侧栏、缩放、状态栏）、`MainMenu`（代码构建的菜单栏）。
 - `Tests/PaintCoreTests`：算法单元测试。
 - `Tests/SketchpadTests`：用合成的鼠标事件驱动 `CanvasView`，以及文字栅格化的方向和位置测试。
 
@@ -34,4 +34,6 @@ scripts/test.sh        # 跑全部测试
 - 选区：矩形和自由选区；拖动时选区被“拿起”，原位置填颜色 2；透明选择打开时，选区里颜色 2 的像素不覆盖下面的画面。一次选区从选中到取消（包括移动、粘贴、删除）算一步撤销；选区还浮着时按撤销，选区回到原位。
 - 粘贴：贴在可见区域左上角并保持选中；图片比画布大时画布自动扩大。裁剪把画布缩到选区大小。
 - 文字：点击或拖出文字框，整框统一字体、字号（磅，按 96 dpi 换算成像素）、粗体、斜体、下划线，可选不透明背景（颜色 2）；点击画布其他位置或切换工具时写入位图，之后不能再编辑；Esc 放弃。
-- 快捷键：S 选择，T 文字，P 铅笔，E 橡皮，B 填充，I 取色，Z 放大镜；Esc 取消正在拖拽的形状或取消选择；方向键逐像素移动选区，Delete 删除选区；⌘⇧X 裁剪。
+- 旋转和翻转：只有 90° 的倍数，逐像素搬移，不插值。有选区时只作用于选区，否则作用于整张图。
+- 调整大小和倾斜：先缩放、再水平倾斜、再垂直倾斜，合为一步撤销。缩放按像素面积加权平均：缩小时混合，整数倍放大时等同最近邻，近似原版用的 GDI HALFTONE。倾斜是原版的整数剪切，偏移 = (k·10⁶ / T + 5) / 10，T = round(100000·cot θ)，角度限 ±89°；正角度水平倾斜时顶部右移，空出的区域填颜色 2。缩放上限 500% 是本项目自定的。
+- 快捷键：S 选择，T 文字，P 铅笔，E 橡皮，B 填充，I 取色，Z 放大镜；Esc 取消正在拖拽的形状或取消选择；方向键逐像素移动选区，Delete 删除选区；⌘⇧X 裁剪；⌥⌘R 调整大小和倾斜（原版是 Ctrl+W，但 ⌘W 在 Mac 上是关闭窗口）。

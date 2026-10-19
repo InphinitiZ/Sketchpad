@@ -178,3 +178,92 @@ private final class Harness {
         #expect(bitmap[point(150, 35)] == .white)
     }
 }
+
+@MainActor
+@Suite(.serialized) struct ImageCommandTests {
+    @Test func rotatingThePictureSwapsItsSizeAndUndoRestoresIt() {
+        let h = Harness()
+        h.bitmap[point(0, 0)] = blue
+        h.canvas.rotateRight(nil)
+        h.endEvent()
+        #expect(h.bitmap.width == 600 && h.bitmap.height == 800)
+        #expect(h.bitmap[point(599, 0)] == blue, "top-left corner goes to top-right")
+
+        h.canvas.undo(nil)
+        h.endEvent()
+        #expect(h.bitmap.width == 800 && h.bitmap[point(0, 0)] == blue)
+    }
+
+    @Test func flippingActsOnTheSelectionOnly() {
+        let h = Harness()
+        h.bitmap[point(10, 10)] = blue
+        h.bitmap[point(100, 100)] = blue
+        h.state.tool = .select
+        h.drag(from: point(10, 10), to: point(19, 19))
+        h.canvas.flipHorizontal(nil)
+        h.endEvent()
+
+        #expect(h.bitmap[point(19, 10)] == blue)
+        #expect(h.bitmap[point(10, 10)] == .white)
+        #expect(h.bitmap[point(100, 100)] == blue, "outside the selection is untouched")
+        #expect(h.bitmap.width == 800)
+
+        h.click(at: point(300, 300))
+        #expect(h.document.undoManager?.undoActionName == "Flip")
+    }
+
+    @Test func resizeAndSkewIsOneUndoStep() {
+        let h = Harness()
+        h.canvas.applyTransforms([.resize(width: 400, height: 300), .skewHorizontal(degrees: 45)], actionName: "Resize and Skew")
+        h.endEvent()
+        #expect(h.bitmap.width == 700 && h.bitmap.height == 300)
+
+        h.canvas.undo(nil)
+        h.endEvent()
+        #expect(h.bitmap.width == 800 && h.bitmap.height == 600)
+    }
+
+    @Test func skewFillsUncoveredCornersWithColor2() {
+        let h = Harness()
+        h.state.secondary = blue
+        h.canvas.applyTransforms([.skewHorizontal(degrees: 45)], actionName: "Skew")
+        #expect(h.bitmap[point(0, 0)] == blue)
+        #expect(h.bitmap[point(799, 0)] == .white)
+    }
+}
+
+@MainActor
+@Suite struct ResizeSkewFormTests {
+    @Test func percentageWithLockedRatioMirrorsTheOtherField() {
+        let form = ResizeSkewForm(width: 800, height: 600)
+        #expect(form.view.frame.width > 200 && form.view.frame.height > 150, "the alert sizes its accessory view from this frame")
+        form.horizontalField.stringValue = "50"
+        form.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: form.horizontalField))
+        #expect(form.verticalField.stringValue == "50")
+        #expect(form.result == .init(width: 400, height: 300, skewHorizontal: 0, skewVertical: 0))
+    }
+
+    @Test func pixelsKeepTheAspectRatio() {
+        let form = ResizeSkewForm(width: 800, height: 600)
+        form.unitControl.selectedSegment = 1
+        form.unitChanged()
+        #expect(form.horizontalField.stringValue == "800")
+        form.horizontalField.stringValue = "200"
+        form.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: form.horizontalField))
+        #expect(form.verticalField.stringValue == "150")
+    }
+
+    @Test func valuesAreClampedToPaintsLimits() {
+        let form = ResizeSkewForm(width: 100, height: 100)
+        form.horizontalField.stringValue = "9000"
+        form.verticalField.stringValue = "0"
+        form.skewHorizontalField.stringValue = "120"
+        form.skewVerticalField.stringValue = "-120"
+        #expect(form.result == .init(width: 500, height: 1, skewHorizontal: 89, skewVertical: -89))
+    }
+
+    @Test func unchangedStepsAreLeftOut() {
+        let result = ResizeSkewForm.Result(width: 800, height: 600, skewHorizontal: 0, skewVertical: 10)
+        #expect(result.transforms(from: 800, 600) == [.skewVertical(degrees: 10)])
+    }
+}

@@ -58,6 +58,13 @@ public struct SelectionMask: Equatable, Sendable {
         outline = points.map { PixelPoint(x: $0.x - rect.x, y: $0.y - rect.y) }
     }
 
+    init(rect: PixelRect, bits: [Bool], outline: [PixelPoint]) {
+        precondition(bits.count == rect.width * rect.height)
+        self.rect = rect
+        self.bits = bits
+        self.outline = outline
+    }
+
     public var isRectangular: Bool { bits == nil }
 
     /// Whether the selection covers the canvas pixel `p`.
@@ -194,6 +201,21 @@ public final class SelectionSession {
         guard let floating, let base else { return .zero }
         bitmap.restore(mask.rect, from: base)
         let changed = bitmap.stamp(floating, mask: mask, skipping: color)
+        dirty = dirty.union(changed)
+        return changed
+    }
+
+    /// Swaps the floating pixels and mask for transformed ones and redraws. The selection must
+    /// already be lifted. Returns the canvas area that changed.
+    func replaceFloating(_ change: (PixelGrid, SelectionMask) -> (PixelGrid, SelectionMask)) -> PixelRect {
+        guard let floating, let base else { return .zero }
+        let old = mask.rect
+        let (grid, newMask) = change(PixelGrid(width: old.width, height: old.height, pixels: floating), mask)
+        bitmap.restore(old, from: base)
+        self.floating = grid.pixels
+        mask = newMask
+        bitmap.stamp(grid.pixels, mask: newMask, skipping: transparentColor)
+        let changed = old.union(newMask.rect).intersection(bitmap.bounds)
         dirty = dirty.union(changed)
         return changed
     }

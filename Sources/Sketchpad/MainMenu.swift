@@ -41,8 +41,20 @@ enum MainMenu {
             item("Delete", #selector(CanvasView.delete(_:))),
             item("Select All", #selector(NSText.selectAll(_:)), "a"),
             .separator(),
-            item("Crop to Selection", #selector(CanvasView.crop(_:)), "x", [.command, .shift]),
             item("Transparent Selection", #selector(CanvasWindowController.toggleTransparentSelection(_:))),
+        ]))
+
+        // Each command acts on the selection if there is one, else on the whole picture.
+        main.addItem(submenu("Image", [
+            item("Crop to Selection", #selector(CanvasView.crop(_:)), "x", [.command, .shift]),
+            item("Resize and Skew…", #selector(CanvasView.resizeAndSkew(_:)), "r", [.command, .option]),
+            .separator(),
+            item("Rotate Right 90°", #selector(CanvasView.rotateRight(_:))),
+            item("Rotate Left 90°", #selector(CanvasView.rotateLeft(_:))),
+            item("Rotate 180°", #selector(CanvasView.rotateHalfTurn(_:))),
+            .separator(),
+            item("Flip Vertical", #selector(CanvasView.flipVertical(_:))),
+            item("Flip Horizontal", #selector(CanvasView.flipHorizontal(_:))),
         ]))
 
         main.addItem(submenu("View", [
