@@ -11,6 +11,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.activate()
     }
 
+    /// Restored windows bring back pictures autosaved before a crash.
+    func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool {
+        true
+    }
+
     @objc func importFromScannerOrCamera(_ sender: Any?) {
         DeviceImportWindowController.shared.showWindow(sender)
     }

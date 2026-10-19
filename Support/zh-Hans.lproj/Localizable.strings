@@ -311,3 +311,4 @@
 "Erase to color 2; with the right button, change only color 1 into color 2." = "用颜色 2 擦除；右键则只把颜色 1 替换为颜色 2。";
 "Take a color from the picture for color 1, or color 2 with the right button." = "从图片中选取颜色作为颜色 1，右键则作为颜色 2。";
 "Zoom in on part of the picture; the right button zooms out." = "放大图片的一部分；右键缩小。";
+"%@ (Recovered)" = "%@ (已恢复)";

@@ -5,10 +5,17 @@ import PaintCore
 /// `HKCU\…\Applets\Paint` (`CPBApp::LoadProfileSettings`): the View options, the measuring unit,
 /// the text tool's font, and the size of the last picture for new ones.
 enum Preferences {
+    /// Where settings are kept. `UserDefaults` is thread-safe, so it may cross tasks.
+    struct Store: @unchecked Sendable {
+        let defaults: UserDefaults
+    }
+
     /// The app's settings; anywhere else (the test runner) a scratch domain, emptied at launch,
     /// so tests never depend on or change the user's settings. A test can give itself a
-    /// private store with `Preferences.$store.withValue(…)`.
-    @TaskLocal static var store: UserDefaults = defaultStore
+    /// private store with `Preferences.$current.withValue(…)`.
+    @TaskLocal static var current = Store(defaults: defaultStore)
+
+    static var store: UserDefaults { current.defaults }
 
     private static let defaultStore: UserDefaults = {
         guard Bundle.main.bundleIdentifier != "dev.local.Sketchpad" else { return .standard }

@@ -32,6 +32,11 @@ final class CanvasWindowController: NSWindowController {
             defer: false
         )
         window.minSize = NSSize(width: 640, height: 420)
+        // Restorable through the document controller, so a relaunch after a crash reopens the
+        // autosaved pictures (see `DocumentController`).
+        window.isRestorable = true
+        window.restorationClass = NSDocumentController.self
+        window.identifier = NSUserInterfaceItemIdentifier("Picture")
         super.init(window: window)
         window.delegate = self
 

@@ -29,14 +29,33 @@ final class CanvasDocument: NSDocument {
     /// The color depth for BMP files, chosen in the save panel (Paint's four bitmap types).
     var bitmapDepth = BitmapDepth.trueColor
 
+    /// The format of the file the picture came from, and that file's metadata (camera, date,
+    /// place …). Like Paint's `SaveDIBToFile`, saving in the same format carries it over.
+    var sourceTypeIdentifier: String?
+    var sourceMetadata: [CFString: Any] = [:]
+
+    /// Reopened from its autosaved copy after a crash; the title says so until it is saved.
+    var isRecovered = false
+    /// Set while an autosave writes, which must not place a selection or text box.
+    private var isAutosaving = false
+
     override init() {
         super.init()
         // Paint keeps 50 undo steps (set in CPBView::OnInitialUpdate).
         undoManager?.levelsOfUndo = 50
     }
 
-    // Saving in place would recompress JPEGs on every autosave.
+    // Saving in place would recompress JPEGs on every autosave. Instead, changes are autosaved
+    // elsewhere (as PNG, losslessly) for crash recovery; see `DocumentController`.
     override class var autosavesInPlace: Bool { false }
+
+    override var autosavingFileType: String? { UTType.png.identifier }
+
+    /// Paint's "%1 (Recovered)".
+    override var displayName: String! {
+        get { isRecovered ? localized(format: "%@ (Recovered)", super.displayName) : super.displayName }
+        set { super.displayName = newValue }
+    }
 
     override func makeWindowControllers() {
         addWindowController(CanvasWindowController(document: self))
@@ -46,20 +65,51 @@ final class CanvasDocument: NSDocument {
         guard let decoded = ImageCodec.decodeWithResolution(data) else {
             throw CocoaError(.fileReadCorruptFile)
         }
-        bitmap = Bitmap(image: decoded.image)
+        var bitmap = Bitmap(image: decoded.image)
+        if decoded.opensUpright {
+            bitmap = Bitmap(grid: bitmap.grid.upright(fromEXIFOrientation: decoded.orientation))
+        }
+        self.bitmap = bitmap
         dotsPerInch = decoded.dotsPerInch
+        sourceTypeIdentifier = decoded.typeIdentifier
+        sourceMetadata = decoded.metadata
         onBitmapChange?(nil)
     }
 
+    /// Whether a save as `type` carries the source file's metadata: only in the same format.
+    func carriesMetadata(as type: UTType) -> Bool {
+        guard !sourceMetadata.isEmpty, let source = sourceTypeIdentifier.flatMap(UTType.init) else { return false }
+        return source == type
+    }
+
+    override func write(to url: URL, ofType typeName: String, for saveOperation: NSDocument.SaveOperationType, originalContentsURL absoluteOriginalContentsURL: URL?) throws {
+        isAutosaving = saveOperation == .autosaveElsewhereOperation || saveOperation == .autosaveInPlaceOperation
+        defer { isAutosaving = false }
+        try super.write(to: url, ofType: typeName, for: saveOperation, originalContentsURL: absoluteOriginalContentsURL)
+    }
+
     override func data(ofType typeName: String) throws -> Data {
-        willWrite?()
+        // An autosave takes the picture as it shows; only a real save places what is in progress.
+        if !isAutosaving { willWrite?() }
         guard let image = bitmap.makeImage(), let type = UTType(typeName) else {
             throw CocoaError(.fileWriteUnknown)
         }
         if type.conforms(to: .bmp) {
             return ImageCodec.encodeBMP(bitmap.grid, depth: bitmapDepth, dotsPerInch: dotsPerInch)
         }
-        return try ImageCodec.encode(image, as: type, dotsPerInch: dotsPerInch)
+        let metadata = carriesMetadata(as: type) ? ImageCodec.carriedMetadata(sourceMetadata, width: bitmap.width, height: bitmap.height) : nil
+        return try ImageCodec.encode(image, as: type, dotsPerInch: dotsPerInch, metadata: metadata)
+    }
+
+    /// After a save, the file just written is the source: a different format leaves the
+    /// metadata behind, as it would for Paint, and a recovered picture is recovered no longer.
+    private func didSave(as typeName: String, for saveOperation: NSDocument.SaveOperationType) {
+        guard saveOperation == .saveOperation || saveOperation == .saveAsOperation else { return }
+        if let type = UTType(typeName), !carriesMetadata(as: type) {
+            sourceMetadata = [:]
+            sourceTypeIdentifier = typeName
+        }
+        isRecovered = false
     }
 
     /// Whether `type` holds fewer colors than the picture has (Paint warns before saving).
@@ -70,6 +120,10 @@ final class CanvasDocument: NSDocument {
     }
 
     override func save(to url: URL, ofType typeName: String, for saveOperation: NSDocument.SaveOperationType, completionHandler: @escaping (Error?) -> Void) {
+        let completionHandler: (Error?) -> Void = { [weak self] error in
+            if error == nil { self?.didSave(as: typeName, for: saveOperation) }
+            completionHandler(error)
+        }
         guard saveOperation != .autosaveElsewhereOperation, saveOperation != .autosaveInPlaceOperation,
               let type = UTType(typeName), savingLosesColors(as: type) else {
             super.save(to: url, ofType: typeName, for: saveOperation, completionHandler: completionHandler)

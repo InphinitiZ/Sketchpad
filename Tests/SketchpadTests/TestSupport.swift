@@ -1,4 +1,5 @@
 import AppKit
+import ImageIO
 import PaintCore
 @testable import Sketchpad
 
@@ -74,5 +75,21 @@ func withFreshPreferences<T>(_ body: () throws -> T) rethrows -> T {
     let name = "dev.local.Sketchpad.test-\(UUID().uuidString)"
     let store = UserDefaults(suiteName: name)!
     defer { store.removePersistentDomain(forName: name) }
-    return try Preferences.$store.withValue(store, operation: body)
+    return try Preferences.$current.withValue(Preferences.Store(defaults: store), operation: body)
+}
+
+/// A JPEG of `grid` with camera metadata (make, date, place) and the given EXIF orientation.
+func photoJPEG(_ grid: PixelGrid, orientation: Int) throws -> Data {
+    guard let image = Bitmap(grid: grid).makeImage() else { throw CocoaError(.fileWriteUnknown) }
+    let data = NSMutableData()
+    guard let destination = CGImageDestinationCreateWithData(data, "public.jpeg" as CFString, 1, nil) else { throw CocoaError(.fileWriteUnknown) }
+    let properties: [CFString: Any] = [
+        kCGImagePropertyOrientation: orientation,
+        kCGImageDestinationLossyCompressionQuality: 1.0,
+        kCGImagePropertyTIFFDictionary: [kCGImagePropertyTIFFMake: "Sketchpad Camera", kCGImagePropertyTIFFOrientation: orientation],
+        kCGImagePropertyExifDictionary: [kCGImagePropertyExifDateTimeOriginal: "2026:10:19 08:30:00"],
+    ]
+    CGImageDestinationAddImage(destination, image, properties as CFDictionary)
+    guard CGImageDestinationFinalize(destination) else { throw CocoaError(.fileWriteUnknown) }
+    return data as Data
 }

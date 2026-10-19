@@ -296,3 +296,23 @@ extension PixelGrid {
         return result
     }
 }
+
+extension PixelGrid {
+    /// The picture turned and mirrored so an EXIF `orientation` (1–8) reads upright: 2 mirror,
+    /// 3 half turn, 4 flip, 5 transpose, 6 quarter turn clockwise, 7 transverse, 8 quarter
+    /// turn counterclockwise.
+    public func upright(fromEXIFOrientation orientation: Int) -> PixelGrid {
+        let steps: [CanvasTransform]
+        switch orientation {
+        case 2: steps = [.flipHorizontal]
+        case 3: steps = [.rotate(.halfTurn)]
+        case 4: steps = [.flipVertical]
+        case 5: steps = [.rotate(.clockwise), .flipHorizontal]
+        case 6: steps = [.rotate(.clockwise)]
+        case 7: steps = [.rotate(.clockwise), .flipVertical]
+        case 8: steps = [.rotate(.counterclockwise)]
+        default: steps = []
+        }
+        return steps.reduce(self) { $0.applying($1, background: 0) }
+    }
+}
