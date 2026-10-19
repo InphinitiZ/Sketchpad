@@ -6,12 +6,12 @@ import PaintCore
 final class ThumbnailPanel {
     let panel: NSPanel
     private let view = ThumbnailView()
-    private weak var scrollView: NSScrollView?
+    private weak var canvasView: NSView?
     private let image: () -> CGImage?
     private var refreshQueued = false
 
-    init(scrollView: NSScrollView, image: @escaping () -> CGImage?) {
-        self.scrollView = scrollView
+    init(canvasView: NSView, image: @escaping () -> CGImage?) {
+        self.canvasView = canvasView
         self.image = image
         panel = NSPanel(
             contentRect: NSRect(x: 0, y: 0, width: 220, height: 170),
@@ -54,16 +54,16 @@ final class ThumbnailPanel {
     }
 
     func refresh() {
-        guard isVisible, let scrollView else { return }
+        guard isVisible, let canvasView else { return }
         view.image = image()
-        view.visibleArea = scrollView.documentVisibleRect
+        view.visibleArea = canvasView.visibleRect
         view.needsDisplay = true
     }
 
     private func scroll(centeredOn point: CGPoint) {
-        guard let scrollView, let document = scrollView.documentView else { return }
-        let visible = scrollView.documentVisibleRect
-        document.scroll(CGPoint(x: point.x - visible.width / 2, y: point.y - visible.height / 2))
+        guard let canvasView else { return }
+        let visible = canvasView.visibleRect
+        canvasView.scroll(CGPoint(x: point.x - visible.width / 2, y: point.y - visible.height / 2))
         refresh()
     }
 }

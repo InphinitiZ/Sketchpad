@@ -28,6 +28,10 @@ extension CanvasView: NSMenuItemValidation {
     }
 
     @objc func delete(_ sender: Any?) {
+        if activeShape != nil {
+            discardActiveShape()
+            return
+        }
         guard let selection else { return }
         bitmapDidChange(selection.erase(background: state.secondary))
         if selectionActionName == localized("Move Selection") { selectionActionName = localized("Delete") }
@@ -47,6 +51,11 @@ extension CanvasView: NSMenuItemValidation {
     @discardableResult
     func paste(from pasteboard: NSPasteboard) -> Bool {
         guard let image = Self.image(on: pasteboard) else { return false }
+        pasteImage(image)
+        return true
+    }
+
+    func pasteImage(_ image: CGImage) {
         finishInteractions()
         state.tool = .select
 
@@ -75,7 +84,18 @@ extension CanvasView: NSMenuItemValidation {
         )
         selectionActionName = localized("Paste")
         bitmapDidChange(nil)
-        return true
+    }
+
+    /// Paint's Paste From: pastes an image file as a floating selection.
+    @objc func pasteFrom(_ sender: Any?) {
+        guard let window else { return }
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.image]
+        panel.beginSheetModal(for: window) { [weak self] response in
+            guard response == .OK, let url = panel.url, let data = try? Data(contentsOf: url),
+                  let image = ImageCodec.decode(data) else { return }
+            self?.pasteImage(image)
+        }
     }
 
     @objc override func selectAll(_ sender: Any?) {
@@ -97,12 +117,14 @@ extension CanvasView: NSMenuItemValidation {
     /// so the selection jumps back to where it was lifted from.
     @objc func undo(_ sender: Any?) {
         finishPendingShape()
+        commitActiveShape()
         commitSelection()
         document.undoManager?.undo()
     }
 
     @objc func redo(_ sender: Any?) {
         finishPendingShape()
+        commitActiveShape()
         commitSelection()
         document.undoManager?.redo()
     }
@@ -110,8 +132,10 @@ extension CanvasView: NSMenuItemValidation {
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         let undoManager = document.undoManager
         switch menuItem.action {
-        case #selector(copy(_:)), #selector(cut(_:)), #selector(delete(_:)), #selector(crop(_:)):
+        case #selector(copy(_:)), #selector(cut(_:)), #selector(crop(_:)):
             return selection != nil
+        case #selector(delete(_:)):
+            return selection != nil || activeShape != nil
         case #selector(paste(_:)):
             return NSPasteboard.general.availableType(from: Self.imageTypes) != nil
         case #selector(undo(_:)):

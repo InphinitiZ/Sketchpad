@@ -1,60 +1,43 @@
 import AppKit
 import PaintCore
 
-/// Lays out one document window: tool sidebar, zoomable canvas, status bar.
+/// Lays out one document window as Paint does: the ribbon on top, the canvas in its workspace,
+/// the status bar at the bottom, and Save, Undo and Redo in the title bar.
 final class CanvasWindowController: NSWindowController {
-    private static let zoomLevels: [CGFloat] = [0.125, 0.25, 0.5, 1, 2, 3, 4, 6, 8]
-
-    private let state = EditorState()
-    private let canvasView: CanvasView
-    private let scrollView = NSScrollView()
-    private let cursorLabel = NSTextField(labelWithString: "")
-    private let sizeLabel = NSTextField(labelWithString: "")
-    private let zoomLabel = NSTextField(labelWithString: "")
-    private var toolButtons: [Tool: NSButton] = [:]
-    private let sizePopup = NSPopUpButton()
-    private let brushPopup = NSPopUpButton()
-    private let shapePopup = NSPopUpButton()
-    private let outlinePopup = NSPopUpButton()
-    private let fillPopup = NSPopUpButton()
-    private var brushOptions = NSStackView()
-    private var shapeOptions = NSStackView()
-    private let transparentCheckbox = NSButton(checkboxWithTitle: localized("Transparent selection"), target: nil, action: nil)
-    private let fontPopup = NSPopUpButton()
-    private let pointSizePopup = NSPopUpButton()
-    private let textStyleControl = NSSegmentedControl(
-        images: [
-            NSImage(systemSymbolName: "bold", accessibilityDescription: localized("Bold"))!,
-            NSImage(systemSymbolName: "italic", accessibilityDescription: localized("Italic"))!,
-            NSImage(systemSymbolName: "underline", accessibilityDescription: localized("Underline"))!,
-        ],
-        trackingMode: .selectAny, target: nil, action: nil
-    )
-    private let opaqueCheckbox = NSButton(checkboxWithTitle: localized("Opaque background"), target: nil, action: nil)
-    private var textOptions = NSStackView()
-    private let primarySwatch = ColorSwatch(size: 30)
-    private let secondarySwatch = ColorSwatch(size: 30)
-    /// Which swatch the shared color panel is editing.
-    private var editingSecondary = false
-    private let statusBar = NSStackView()
+    let state = EditorState()
+    let canvasView: CanvasView
+    let workspace: CanvasWorkspaceView
+    let scrollView = NSScrollView()
+    let statusBar = StatusBarView()
     private var statusBarHeight: NSLayoutConstraint?
-    private lazy var thumbnail = ThumbnailPanel(scrollView: scrollView) { [weak self] in
+    private(set) var ribbon: RibbonView!
+    /// The ribbon's controls that show state; set up in `buildRibbon`.
+    var controls = RibbonControls()
+    /// The Thumbnail option; the window itself only shows while zoomed in past 100%.
+    private(set) var thumbnailEnabled = false
+    private lazy var thumbnail = ThumbnailPanel(canvasView: canvasView) { [weak self] in
         (self?.document as? CanvasDocument)?.bitmap.makeImage()
     }
+    private var fullScreen: FullScreenViewer?
+    private var editingColors = false
+    private var lastRulerMarks: (CGFloat, CGFloat)?
 
     init(document: CanvasDocument) {
         canvasView = CanvasView(document: document, state: state)
+        workspace = CanvasWorkspaceView(canvasView: canvasView)
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 1040, height: 720),
+            contentRect: NSRect(x: 0, y: 0, width: 1100, height: 760),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false
         )
-        window.minSize = NSSize(width: 480, height: 360)
+        window.minSize = NSSize(width: 640, height: 420)
         super.init(window: window)
         window.delegate = self
 
+        ribbon = buildRibbon()
         buildLayout()
+        addQuickAccessToolbar()
         window.center()
 
         document.onBitmapChange = { [weak self] rect in
@@ -62,28 +45,85 @@ final class CanvasWindowController: NSWindowController {
             self?.updateStatus()
         }
         canvasView.onCursorMove = { [weak self] p in
-            self?.cursorLabel.stringValue = p.map { localized(format: "%ld, %ld px", $0.x, $0.y) } ?? ""
+            guard let self else { return }
+            self.statusBar.positionLabel.stringValue = p.map { self.measure($0.x, $0.y, separator: ", ") } ?? ""
+            self.markRulers(at: p)
         }
         canvasView.onZoomRequest = { [weak self] zoomIn, center in
-            self?.stepZoom(up: zoomIn, centeredAt: center)
+            self?.magnify(in: zoomIn, at: center)
         }
+        canvasView.onWheelZoom = { [weak self] zoomIn, center in
+            guard let self else { return }
+            self.stepZoom(up: zoomIn, centeredAt: self.workspace.convert(center, from: self.canvasView))
+        }
+        canvasView.onCanvasSizePreview = { [weak self] preview in
+            guard let self else { return }
+            if let preview {
+                self.statusBar.canvasLabel.stringValue = self.measure(preview.width, preview.height, separator: " × ")
+            } else {
+                self.updateStatus()
+            }
+        }
+        canvasView.onStatusChange = { [weak self] in self?.updateSelectionStatus() }
         canvasView.onDisplayChange = { [weak self] in self?.thumbnail.setNeedsRefresh() }
+        statusBar.onZoom = { [weak self] zoom in self?.setZoom(zoom, centeredAt: nil) }
+        statusBar.onZoomStep = { [weak self] up in self?.stepZoom(up: up, centeredAt: nil) }
         scrollView.contentView.postsBoundsChangedNotifications = true
         NotificationCenter.default.addObserver(
             self, selector: #selector(visibleAreaChanged),
             name: NSView.boundsDidChangeNotification, object: scrollView.contentView
         )
-        state.observe { [weak self] in self?.syncControls() }
         NotificationCenter.default.addObserver(
             self, selector: #selector(magnificationChanged),
             name: NSScrollView.didEndLiveMagnifyNotification, object: scrollView
         )
+        state.observe { [weak self] in self?.syncControls() }
+        applySavedViewOptions()
         syncControls()
         updateStatus()
     }
 
+    /// Restores the View options Paint remembers between runs.
+    private func applySavedViewOptions() {
+        scrollView.rulersVisible = Preferences.showRulers
+        canvasView.showsGridlines = Preferences.showGrid
+        statusBar.isHidden = !Preferences.showStatusBar
+        statusBarHeight?.constant = statusBar.isHidden ? 0 : 24
+        thumbnailEnabled = Preferences.showThumbnail
+        applyUnit()
+        window?.setFrameAutosaveName("Sketchpad Window")
+    }
+
+    /// Shows rulers and status bar measures in the unit chosen in Image Properties.
+    func applyUnit() {
+        let unit = Preferences.unit
+        let dpi = canvasView.document.dotsPerInch
+        let name = NSRulerView.UnitName("Sketchpad \(unit.rawValue) \(dpi)")
+        NSRulerView.registerUnit(
+            withName: name, abbreviation: unit.abbreviation, unitToPointsConversionFactor: unit.pixels(at: dpi),
+            stepUpCycle: unit == .pixels ? [10] : [2], stepDownCycle: [0.5]
+        )
+        scrollView.horizontalRulerView?.measurementUnits = name
+        scrollView.verticalRulerView?.measurementUnits = name
+        // Gridline spacing follows the unit too.
+        canvasView.needsDisplay = true
+        updateStatus()
+    }
+
+    /// A pixel position or size in the current unit, as Paint's status bar writes it.
+    private func measure(_ a: Int, _ b: Int, separator: String) -> String {
+        let unit = Preferences.unit, dpi = canvasView.document.dotsPerInch
+        return unit.format(a, at: dpi) + separator + unit.format(b, at: dpi) + unit.abbreviation
+    }
+
     required init?(coder: NSCoder) {
         fatalError("init(coder:) is not supported")
+    }
+
+    /// The document is attached after `init` (by `addWindowController`), so the status bar
+    /// fills in then.
+    override var document: AnyObject? {
+        didSet { updateStatus() }
     }
 
     // MARK: - Layout
@@ -94,14 +134,18 @@ final class CanvasWindowController: NSWindowController {
         let clipView = FlippedClipView()
         clipView.drawsBackground = false
         scrollView.contentView = clipView
-        scrollView.documentView = canvasView
+        scrollView.documentView = workspace
         scrollView.hasVerticalScroller = true
         scrollView.hasHorizontalScroller = true
         scrollView.allowsMagnification = true
-        scrollView.minMagnification = Self.zoomLevels.first!
-        scrollView.maxMagnification = Self.zoomLevels.last!
+        scrollView.minMagnification = StatusBarView.zoomLevels.first!
+        scrollView.maxMagnification = StatusBarView.zoomLevels.last!
         // Paint's gray-blue workspace around the canvas.
-        scrollView.backgroundColor = NSColor(srgbRed: 0.79, green: 0.84, blue: 0.91, alpha: 1)
+        scrollView.backgroundColor = NSColor(name: nil) { appearance in
+            appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+                ? NSColor(srgbRed: 0.17, green: 0.19, blue: 0.23, alpha: 1)
+                : NSColor(srgbRed: 0.79, green: 0.84, blue: 0.91, alpha: 1)
+        }
         scrollView.drawsBackground = true
         NSRulerView.registerUnit(
             withName: .pixels, abbreviation: "px", unitToPointsConversionFactor: 1,
@@ -113,28 +157,18 @@ final class CanvasWindowController: NSWindowController {
         scrollView.verticalRulerView?.measurementUnits = .pixels
         scrollView.rulersVisible = false
 
-        let sidebar = makeSidebar()
-        for view in [cursorLabel, NSView(), sizeLabel, zoomLabel] { statusBar.addArrangedSubview(view) }
-        statusBar.spacing = 24
-        statusBar.edgeInsets = NSEdgeInsets(top: 0, left: 10, bottom: 0, right: 10)
-        for label in [cursorLabel, sizeLabel, zoomLabel] {
-            label.font = .monospacedDigitSystemFont(ofSize: NSFont.smallSystemFontSize, weight: .regular)
-            label.textColor = .secondaryLabelColor
-        }
-
-        for view in [sidebar, scrollView, statusBar] as [NSView] {
+        for view in [ribbon!, scrollView, statusBar] as [NSView] {
             view.translatesAutoresizingMaskIntoConstraints = false
             content.addSubview(view)
         }
         NSLayoutConstraint.activate([
-            sidebar.leadingAnchor.constraint(equalTo: content.leadingAnchor),
-            sidebar.topAnchor.constraint(equalTo: content.topAnchor),
-            sidebar.bottomAnchor.constraint(equalTo: statusBar.topAnchor),
-            sidebar.widthAnchor.constraint(equalToConstant: 150),
+            ribbon.leadingAnchor.constraint(equalTo: content.leadingAnchor),
+            ribbon.trailingAnchor.constraint(equalTo: content.trailingAnchor),
+            ribbon.topAnchor.constraint(equalTo: content.topAnchor),
 
-            scrollView.leadingAnchor.constraint(equalTo: sidebar.trailingAnchor),
+            scrollView.leadingAnchor.constraint(equalTo: content.leadingAnchor),
             scrollView.trailingAnchor.constraint(equalTo: content.trailingAnchor),
-            scrollView.topAnchor.constraint(equalTo: content.topAnchor),
+            scrollView.topAnchor.constraint(equalTo: ribbon.bottomAnchor),
             scrollView.bottomAnchor.constraint(equalTo: statusBar.topAnchor),
 
             statusBar.leadingAnchor.constraint(equalTo: content.leadingAnchor),
@@ -145,307 +179,69 @@ final class CanvasWindowController: NSWindowController {
         statusBarHeight?.isActive = true
     }
 
-    private func makeSidebar() -> NSView {
-        var toolRows: [[NSView]] = []
-        for pairStart in stride(from: 0, to: Tool.allCases.count, by: 2) {
-            var row = Tool.allCases[pairStart..<min(pairStart + 2, Tool.allCases.count)].map(makeToolButton) as [NSView]
-            if row.count < 2 { row.append(NSGridCell.emptyContentView) }
-            toolRows.append(row)
+    /// Paint's Quick Access Toolbar: Save, Undo and Redo beside the window title.
+    private func addQuickAccessToolbar() {
+        let buttons = [
+            (localized("Save"), "square.and.arrow.down", #selector(NSDocument.save(_:))),
+            (localized("Undo"), "arrow.uturn.backward", Selector(("undo:"))),
+            (localized("Redo"), "arrow.uturn.forward", Selector(("redo:"))),
+        ].map { title, symbol, action -> NSButton in
+            let button = NSButton(image: NSImage(systemSymbolName: symbol, accessibilityDescription: title)!, target: nil, action: action)
+            button.bezelStyle = .accessoryBarAction
+            button.isBordered = false
+            button.toolTip = title
+            return button
         }
-        let toolGrid = NSGridView(views: toolRows)
-        toolGrid.rowSpacing = 4
-        toolGrid.columnSpacing = 4
+        let bar = NSStackView(views: buttons)
+        bar.spacing = 2
+        bar.edgeInsets = NSEdgeInsets(top: 0, left: 4, bottom: 0, right: 4)
+        bar.frame.size = bar.fittingSize
+        let accessory = NSTitlebarAccessoryViewController()
+        accessory.view = bar
+        accessory.layoutAttribute = .leading
+        window?.addTitlebarAccessoryViewController(accessory)
+    }
 
-        sizePopup.target = self
-        sizePopup.action = #selector(sizeChanged(_:))
-        sizePopup.setAccessibilityLabel(localized("Size"))
-        brushOptions = makeBrushOptions()
-        shapeOptions = makeShapeOptions()
-        transparentCheckbox.target = self
-        transparentCheckbox.action = #selector(toggleTransparentSelection(_:))
-        textOptions = makeTextOptions()
+    // MARK: - Status
 
-        primarySwatch.onClick = { [weak self] _ in self?.editColor(secondary: false) }
-        secondarySwatch.onClick = { [weak self] _ in self?.editColor(secondary: true) }
-        primarySwatch.title = localized("Color 1")
-        secondarySwatch.title = localized("Color 2")
-        let colorPair = NSStackView(views: [
-            labeled(primarySwatch, localized("Color 1")),
-            labeled(secondarySwatch, localized("Color 2")),
-        ])
-        colorPair.spacing = 12
+    func updateStatus() {
+        let document = canvasView.document
+        let bitmap = document.bitmap
+        statusBar.canvasLabel.stringValue = measure(bitmap.width, bitmap.height, separator: " × ")
+        statusBar.fileSizeLabel.stringValue = fileSizeText(document)
+        statusBar.showZoom(scrollView.magnification)
+        updateSelectionStatus()
+    }
 
-        // Left click sets color 1, right click color 2, as in Paint.
-        let swatches = ClassicPalette.colors.map { color -> NSView in
-            let swatch = ColorSwatch(size: 20)
-            swatch.color = color
-            swatch.secondaryActionName = localized("Set as Color 2")
-            swatch.onClick = { [weak self] secondary in
-                if secondary { self?.state.secondary = color } else { self?.state.primary = color }
-            }
-            return swatch
+    /// The selection pane follows the selection, a shape being drawn or edited, or a box being
+    /// dragged out.
+    private func updateSelectionStatus() {
+        statusBar.selectionLabel.stringValue = canvasView.statusSelectionSize.map {
+            measure($0.width, $0.height, separator: " × ")
+        } ?? ""
+    }
+
+    /// Marks the pointer's position on both rulers.
+    private func markRulers(at p: PixelPoint?) {
+        guard scrollView.rulersVisible, let horizontal = scrollView.horizontalRulerView, let vertical = scrollView.verticalRulerView else { return }
+        let old = lastRulerMarks
+        let new = p.map { point -> (CGFloat, CGFloat) in
+            let location = workspace.convert(NSPoint(x: CGFloat(point.x) + 0.5, y: CGFloat(point.y) + 0.5), from: canvasView)
+            return (location.x, location.y)
         }
-        let paletteRows = stride(from: 0, to: swatches.count, by: 5).map { Array(swatches[$0..<$0 + 5]) }
-        let palette = NSGridView(views: paletteRows)
-        palette.rowSpacing = 3
-        palette.columnSpacing = 3
-
-        let stack = NSStackView(views: [
-            heading(localized("Tools")), toolGrid,
-            brushOptions, shapeOptions,
-            heading(localized("Size")), sizePopup, transparentCheckbox,
-            textOptions,
-            heading(localized("Colors")), colorPair, palette,
-        ])
-        stack.orientation = .vertical
-        stack.alignment = .leading
-        stack.spacing = 8
-        stack.edgeInsets = NSEdgeInsets(top: 12, left: 12, bottom: 12, right: 12)
-        stack.setCustomSpacing(14, after: toolGrid)
-        stack.setCustomSpacing(14, after: transparentCheckbox)
-        stack.setCustomSpacing(14, after: textOptions)
-        return stack
+        horizontal.moveRulerline(fromLocation: old.map { horizontal.convert(NSPoint(x: $0.0, y: 0), from: workspace).x } ?? -1,
+                                 toLocation: new.map { horizontal.convert(NSPoint(x: $0.0, y: 0), from: workspace).x } ?? -1)
+        vertical.moveRulerline(fromLocation: old.map { vertical.convert(NSPoint(x: 0, y: $0.1), from: workspace).y } ?? -1,
+                               toLocation: new.map { vertical.convert(NSPoint(x: 0, y: $0.1), from: workspace).y } ?? -1)
+        lastRulerMarks = new
     }
 
-    /// The brush gallery, shown only while the brush tool is active.
-    private func makeBrushOptions() -> NSStackView {
-        brushPopup.addItems(withTitles: BrushKind.allCases.map(\.title))
-        brushPopup.target = self
-        brushPopup.action = #selector(brushChanged(_:))
-        brushPopup.controlSize = .small
-        brushPopup.setAccessibilityLabel(localized("Brush"))
-        let stack = NSStackView(views: [heading(localized("Brush")), brushPopup])
-        stack.orientation = .vertical
-        stack.alignment = .leading
-        stack.spacing = 6
-        return stack
-    }
-
-    /// The shape gallery with Paint's Outline and Fill choices, shown only for the shape tool.
-    private func makeShapeOptions() -> NSStackView {
-        for kind in ShapeKind.allCases {
-            shapePopup.addItem(withTitle: kind.title)
-            shapePopup.lastItem?.image = Self.icon(for: kind)
+    /// Paint's "Size: 12.3KB", or "Size: None" before the picture is saved.
+    private func fileSizeText(_ document: CanvasDocument) -> String {
+        guard let size = (try? document.fileURL?.resourceValues(forKeys: [.fileSizeKey]))?.fileSize else {
+            return localized("Size: None")
         }
-        outlinePopup.addItems(withTitles: ShapePaint.allCases.map { $0.title(forOutline: true) })
-        fillPopup.addItems(withTitles: ShapePaint.allCases.map { $0.title(forOutline: false) })
-        for popup in [shapePopup, outlinePopup, fillPopup] {
-            popup.target = self
-            popup.action = #selector(shapeOptionsChanged(_:))
-            popup.controlSize = .small
-        }
-        shapePopup.widthAnchor.constraint(equalToConstant: 126).isActive = true
-        shapePopup.setAccessibilityLabel(localized("Shape"))
-        outlinePopup.setAccessibilityLabel(localized("Outline"))
-        fillPopup.setAccessibilityLabel(localized("Fill"))
-        let stack = NSStackView(views: [heading(localized("Shape")), shapePopup, label(localized("Outline")), outlinePopup, label(localized("Fill")), fillPopup])
-        stack.orientation = .vertical
-        stack.alignment = .leading
-        stack.spacing = 4
-        return stack
-    }
-
-    /// A small outline of the shape for the gallery menu.
-    private static func icon(for kind: ShapeKind) -> NSImage {
-        NSImage(size: NSSize(width: 16, height: 16), flipped: true) { rect in
-            let box = rect.insetBy(dx: 2, dy: 2)
-            let path: CGPath
-            switch kind {
-            case .line:
-                let line = CGMutablePath()
-                line.move(to: CGPoint(x: box.minX, y: box.maxY))
-                line.addLine(to: CGPoint(x: box.maxX, y: box.minY))
-                path = line
-            case .curve:
-                let curve = CGMutablePath()
-                curve.move(to: CGPoint(x: box.minX, y: box.maxY))
-                curve.addCurve(to: CGPoint(x: box.maxX, y: box.minY), control1: CGPoint(x: box.minX, y: box.minY), control2: CGPoint(x: box.maxX, y: box.maxY))
-                path = curve
-            case .polygon:
-                let polygon = CGMutablePath()
-                polygon.addLines(between: [
-                    CGPoint(x: box.minX, y: box.maxY), CGPoint(x: box.minX + 3, y: box.minY),
-                    CGPoint(x: box.maxX, y: box.minY + 4), CGPoint(x: box.midX, y: box.midY), CGPoint(x: box.maxX, y: box.maxY),
-                ])
-                polygon.closeSubpath()
-                path = polygon
-            default:
-                path = ShapeGeometry.path(for: kind, in: box) ?? CGPath(rect: box, transform: nil)
-            }
-            guard let context = NSGraphicsContext.current?.cgContext else { return false }
-            context.addPath(path)
-            context.setStrokeColor(NSColor.labelColor.cgColor)
-            context.setLineWidth(1.2)
-            context.strokePath()
-            return true
-        }
-    }
-
-    private func label(_ title: String) -> NSTextField {
-        let label = NSTextField(labelWithString: title)
-        label.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
-        label.textColor = .secondaryLabelColor
-        return label
-    }
-
-    /// Font controls, shown only while the text tool is active.
-    private func makeTextOptions() -> NSStackView {
-        fontPopup.addItems(withTitles: NSFontManager.shared.availableFontFamilies)
-        fontPopup.target = self
-        fontPopup.action = #selector(textStyleChanged(_:))
-        fontPopup.widthAnchor.constraint(equalToConstant: 126).isActive = true
-        fontPopup.controlSize = .small
-        fontPopup.setAccessibilityLabel(localized("Font"))
-
-        pointSizePopup.addItems(withTitles: TextStyle.pointSizes.map { localized(format: "%ld pt", Int($0)) })
-        pointSizePopup.target = self
-        pointSizePopup.action = #selector(textStyleChanged(_:))
-        pointSizePopup.controlSize = .small
-        pointSizePopup.setAccessibilityLabel(localized("Font size"))
-
-        textStyleControl.target = self
-        textStyleControl.action = #selector(textStyleChanged(_:))
-        textStyleControl.controlSize = .small
-        for index in 0..<textStyleControl.segmentCount {
-            textStyleControl.setToolTip(textStyleControl.image(forSegment: index)?.accessibilityDescription, forSegment: index)
-        }
-
-        opaqueCheckbox.target = self
-        opaqueCheckbox.action = #selector(textStyleChanged(_:))
-
-        let stack = NSStackView(views: [heading(localized("Text")), fontPopup, pointSizePopup, textStyleControl, opaqueCheckbox])
-        stack.orientation = .vertical
-        stack.alignment = .leading
-        stack.spacing = 6
-        return stack
-    }
-
-    private func makeToolButton(_ tool: Tool) -> NSButton {
-        let image = NSImage(systemSymbolName: tool.symbolName, accessibilityDescription: tool.title)!
-        let button = NSButton(image: image, target: self, action: #selector(toolClicked(_:)))
-        button.setButtonType(.pushOnPushOff)
-        button.bezelStyle = .smallSquare
-        button.tag = tool.rawValue
-        button.toolTip = tool.shortcut.map { "\(tool.title) (\($0.uppercased()))" } ?? tool.title
-        button.setAccessibilityLabel(tool.title)
-        button.widthAnchor.constraint(equalToConstant: 56).isActive = true
-        button.heightAnchor.constraint(equalToConstant: 32).isActive = true
-        toolButtons[tool] = button
-        return button
-    }
-
-    private func heading(_ title: String) -> NSTextField {
-        let label = NSTextField(labelWithString: title)
-        label.font = .boldSystemFont(ofSize: NSFont.smallSystemFontSize)
-        label.textColor = .secondaryLabelColor
-        return label
-    }
-
-    private func labeled(_ view: NSView, _ title: String) -> NSView {
-        let label = NSTextField(labelWithString: title)
-        label.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
-        let stack = NSStackView(views: [view, label])
-        stack.orientation = .vertical
-        stack.spacing = 2
-        return stack
-    }
-
-    // MARK: - State
-
-    private func syncControls() {
-        for (tool, button) in toolButtons {
-            button.state = tool == state.tool ? .on : .off
-        }
-
-        let options = state.sizeOptions
-        sizePopup.removeAllItems()
-        sizePopup.addItems(withTitles: options.isEmpty ? ["—"] : options.map { localized(format: "%ld px", $0) })
-        sizePopup.isEnabled = !options.isEmpty
-        if let index = options.firstIndex(of: state.size) { sizePopup.selectItem(at: index) }
-
-        brushOptions.isHidden = state.tool != .brush
-        brushPopup.selectItem(at: BrushKind.allCases.firstIndex(of: state.brushKind) ?? 0)
-        shapeOptions.isHidden = state.tool != .shape
-        shapePopup.selectItem(at: ShapeKind.allCases.firstIndex(of: state.shapeKind) ?? 0)
-        outlinePopup.selectItem(at: ShapePaint.allCases.firstIndex(of: state.shapeOutline) ?? 1)
-        fillPopup.selectItem(at: ShapePaint.allCases.firstIndex(of: state.shapeFill) ?? 0)
-        // Lines and curves are never filled.
-        fillPopup.isEnabled = state.shapeKind.canFill
-        transparentCheckbox.state = state.transparentSelection ? .on : .off
-
-        let text = state.textStyle
-        textOptions.isHidden = state.tool != .text
-        fontPopup.selectItem(withTitle: text.family)
-        if let index = TextStyle.pointSizes.firstIndex(of: text.points) { pointSizePopup.selectItem(at: index) }
-        for (index, on) in [text.bold, text.italic, text.underline].enumerated() {
-            textStyleControl.setSelected(on, forSegment: index)
-        }
-        opaqueCheckbox.state = text.opaque ? .on : .off
-
-        primarySwatch.color = state.primary
-        secondarySwatch.color = state.secondary
-        window?.invalidateCursorRects(for: canvasView)
-    }
-
-    private func updateStatus() {
-        guard let bitmap = (document as? CanvasDocument)?.bitmap else { return }
-        sizeLabel.stringValue = localized(format: "%ld × %ld px", bitmap.width, bitmap.height)
-        zoomLabel.stringValue = "\(Int((scrollView.magnification * 100).rounded()))%"
-    }
-
-    @objc private func toolClicked(_ sender: NSButton) {
-        state.tool = Tool(rawValue: sender.tag) ?? .pencil
-        // Re-sync so clicking the active tool does not toggle it off.
-        syncControls()
-    }
-
-    @objc private func sizeChanged(_ sender: NSPopUpButton) {
-        let options = state.sizeOptions
-        guard options.indices.contains(sender.indexOfSelectedItem) else { return }
-        state.size = options[sender.indexOfSelectedItem]
-    }
-
-    @objc private func brushChanged(_ sender: NSPopUpButton) {
-        state.brushKind = BrushKind.allCases[max(0, sender.indexOfSelectedItem)]
-    }
-
-    @objc private func shapeOptionsChanged(_ sender: NSPopUpButton) {
-        state.shapeKind = ShapeKind.allCases[max(0, shapePopup.indexOfSelectedItem)]
-        state.shapeOutline = ShapePaint.allCases[max(0, outlinePopup.indexOfSelectedItem)]
-        state.shapeFill = ShapePaint.allCases[max(0, fillPopup.indexOfSelectedItem)]
-    }
-
-    /// Sidebar checkbox and Edit menu item.
-    @objc func toggleTransparentSelection(_ sender: Any?) {
-        state.transparentSelection.toggle()
-    }
-
-    @objc private func textStyleChanged(_ sender: Any?) {
-        var style = state.textStyle
-        style.family = fontPopup.titleOfSelectedItem ?? style.family
-        if TextStyle.pointSizes.indices.contains(pointSizePopup.indexOfSelectedItem) {
-            style.points = TextStyle.pointSizes[pointSizePopup.indexOfSelectedItem]
-        }
-        style.bold = textStyleControl.isSelected(forSegment: 0)
-        style.italic = textStyleControl.isSelected(forSegment: 1)
-        style.underline = textStyleControl.isSelected(forSegment: 2)
-        style.opaque = opaqueCheckbox.state == .on
-        state.textStyle = style
-    }
-
-    private func editColor(secondary: Bool) {
-        editingSecondary = secondary
-        let panel = NSColorPanel.shared
-        panel.showsAlpha = false
-        panel.color = (secondary ? state.secondary : state.primary).nsColor
-        panel.setTarget(self)
-        panel.setAction(#selector(colorPanelChanged(_:)))
-        panel.orderFront(nil)
-    }
-
-    @objc private func colorPanelChanged(_ sender: NSColorPanel) {
-        guard let color = RGBA(sender.color) else { return }
-        if editingSecondary { state.secondary = color } else { state.primary = color }
+        return localized(format: "Size: %@", ByteCountFormatter.string(fromByteCount: Int64(size), countStyle: .file))
     }
 
     // MARK: - Zoom
@@ -459,66 +255,153 @@ final class CanvasWindowController: NSWindowController {
     }
 
     @objc func zoomToActualSize(_ sender: Any?) {
-        scrollView.magnification = 1
-        updateStatus()
-        thumbnail.refresh()
+        setZoom(1, centeredAt: nil)
+    }
+
+    func stepZoom(up: Bool, centeredAt center: NSPoint?) {
+        let current = scrollView.magnification
+        let next = up
+            ? StatusBarView.zoomLevels.first { $0 > current + 0.001 }
+            : StatusBarView.zoomLevels.last { $0 < current - 0.001 }
+        guard let next else { return }
+        setZoom(next, centeredAt: center)
+    }
+
+    /// Changes the zoom. Like Paint's `SetZoom`, this first places a floating selection.
+    func setZoom(_ zoom: CGFloat, centeredAt center: NSPoint?) {
+        canvasView.commitSelection()
+        if let center {
+            scrollView.setMagnification(zoom, centeredAt: center)
+        } else {
+            scrollView.magnification = zoom
+        }
+        magnificationChanged()
+    }
+
+    /// The magnifier: zoom in so its preview rectangle fills the view, or zoom out.
+    private func magnify(in zoomIn: Bool, at point: NSPoint) {
+        guard zoomIn else {
+            stepZoom(up: false, centeredAt: workspace.convert(point, from: canvasView))
+            return
+        }
+        let target = canvasView.magnifierRect(at: point)
+        stepZoom(up: true, centeredAt: nil)
+        if let target { canvasView.scroll(target.origin) }
     }
 
     @objc private func magnificationChanged() {
+        workspace.updateLayout()
         updateStatus()
-        thumbnail.refresh()
+        updateThumbnail()
+        canvasView.needsDisplay = true
+        // Brush and eraser pointers are drawn at the zoomed size.
+        window?.invalidateCursorRects(for: canvasView)
     }
 
     @objc private func visibleAreaChanged() {
         thumbnail.setNeedsRefresh()
     }
 
-    // MARK: - View menu
+    // MARK: - View tab
 
     @objc func toggleRulers(_ sender: Any?) {
         scrollView.rulersVisible.toggle()
+        Preferences.showRulers = scrollView.rulersVisible
+        lastRulerMarks = nil
+        syncControls()
     }
 
     @objc func toggleGridlines(_ sender: Any?) {
         canvasView.showsGridlines.toggle()
-        // Gridlines only show from 400%, so zoom in if needed to make the toggle visible.
-        if canvasView.showsGridlines, scrollView.magnification < CanvasView.gridlineMagnification {
-            scrollView.magnification = CanvasView.gridlineMagnification
-            updateStatus()
-        }
+        Preferences.showGrid = canvasView.showsGridlines
+        syncControls()
     }
 
     @objc func toggleStatusBar(_ sender: Any?) {
         statusBar.isHidden.toggle()
+        Preferences.showStatusBar = !statusBar.isHidden
         statusBarHeight?.constant = statusBar.isHidden ? 0 : 24
+        syncControls()
     }
 
     @objc func toggleThumbnail(_ sender: Any?) {
-        guard let window else { return }
-        if thumbnail.isVisible { thumbnail.hide() } else { thumbnail.show(attachedTo: window) }
+        thumbnailEnabled.toggle()
+        Preferences.showThumbnail = thumbnailEnabled
+        updateThumbnail()
+        syncControls()
     }
 
-    private func stepZoom(up: Bool, centeredAt center: NSPoint?) {
-        let current = scrollView.magnification
-        let next = up
-            ? Self.zoomLevels.first { $0 > current + 0.001 }
-            : Self.zoomLevels.last { $0 < current - 0.001 }
-        guard let next else { return }
-        if let center {
-            scrollView.setMagnification(next, centeredAt: center)
+    /// Paint shows the thumbnail only while the picture is zoomed in past 100%.
+    private func updateThumbnail() {
+        guard let window else { return }
+        let wanted = thumbnailEnabled && scrollView.magnification > 1.001
+        if wanted, !thumbnail.isVisible {
+            thumbnail.show(attachedTo: window)
+        } else if !wanted, thumbnail.isVisible {
+            thumbnail.hide()
         } else {
-            scrollView.magnification = next
+            thumbnail.refresh()
         }
-        updateStatus()
-        thumbnail.refresh()
     }
+
+    var thumbnailIsShowing: Bool { thumbnail.isVisible }
+
+    /// Paint's Full Screen (F11): the picture alone; any key or click returns.
+    @objc func showFullScreen(_ sender: Any?) {
+        guard let image = (document as? CanvasDocument)?.bitmap.makeImage(), let screen = window?.screen ?? NSScreen.main else { return }
+        canvasView.finishInteractions()
+        let viewer = FullScreenViewer(image: image, screen: screen) { [weak self] in self?.fullScreen = nil }
+        fullScreen = viewer
+        viewer.show()
+    }
+
+    // MARK: - Colors
+
+    /// Paint's Edit Colors: the color panel, opened modally on the active color with OK and
+    /// Cancel; OK sets the color and adds it to the custom row.
+    @objc func editColors(_ sender: Any?) {
+        guard !editingColors else { return }
+        editingColors = true
+        defer { editingColors = false }
+        let panel = NSColorPanel.shared
+        panel.showsAlpha = false
+        panel.setTarget(nil)
+        panel.setAction(nil)
+        panel.color = (state.activeSlot == .primary ? state.primary : state.secondary).nsColor
+        panel.accessoryView = EditColorsAccessory { accepted in
+            NSApp.stopModal(withCode: accepted ? .OK : .cancel)
+        }
+        let closing = NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: panel, queue: .main) { _ in
+            NSApp.stopModal(withCode: .cancel)
+        }
+        let response = NSApp.runModal(for: panel)
+        NotificationCenter.default.removeObserver(closing)
+        panel.accessoryView = nil
+        panel.orderOut(nil)
+        if response == .OK, let color = RGBA(panel.color) { applyEditedColor(color) }
+    }
+
+    func applyEditedColor(_ color: RGBA) {
+        state.choose(color)
+        state.addCustomColor(color)
+    }
+
+    /// Edit menu item and ribbon option.
+    @objc func toggleTransparentSelection(_ sender: Any?) {
+        state.transparentSelection.toggle()
+    }
+
+    // MARK: - Format menu (the text tool)
+
+    @objc func toggleBold(_ sender: Any?) { state.textStyle.bold.toggle() }
+    @objc func toggleItalic(_ sender: Any?) { state.textStyle.italic.toggle() }
+    @objc func toggleUnderline(_ sender: Any?) { state.textStyle.underline.toggle() }
+    @objc func toggleStrikethrough(_ sender: Any?) { state.textStyle.strikethrough.toggle() }
 }
 
 extension CanvasWindowController: NSMenuItemValidation {
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         switch menuItem.action {
-        case #selector(toggleTransparentSelection(_:)):
-            menuItem.state = state.transparentSelection ? .on : .off
         case #selector(toggleRulers(_:)):
             menuItem.state = scrollView.rulersVisible ? .on : .off
         case #selector(toggleGridlines(_:)):
@@ -526,7 +409,21 @@ extension CanvasWindowController: NSMenuItemValidation {
         case #selector(toggleStatusBar(_:)):
             menuItem.state = statusBar.isHidden ? .off : .on
         case #selector(toggleThumbnail(_:)):
-            menuItem.state = thumbnail.isVisible ? .on : .off
+            menuItem.state = thumbnailEnabled ? .on : .off
+        case #selector(toggleTransparentSelection(_:)):
+            menuItem.state = state.transparentSelection ? .on : .off
+        case #selector(toggleBold(_:)):
+            menuItem.state = state.textStyle.bold ? .on : .off
+            return state.tool == .text
+        case #selector(toggleItalic(_:)):
+            menuItem.state = state.textStyle.italic ? .on : .off
+            return state.tool == .text
+        case #selector(toggleUnderline(_:)):
+            menuItem.state = state.textStyle.underline ? .on : .off
+            return state.tool == .text
+        case #selector(toggleStrikethrough(_:)):
+            menuItem.state = state.textStyle.strikethrough ? .on : .off
+            return state.tool == .text
         default:
             break
         }
@@ -537,6 +434,9 @@ extension CanvasWindowController: NSMenuItemValidation {
 extension CanvasWindowController: NSWindowDelegate {
     func windowWillClose(_ notification: Notification) {
         thumbnail.hide()
+        // The next new picture gets this one's size, as in Paint.
+        let bitmap = canvasView.document.bitmap
+        Preferences.newPictureSize = (bitmap.width, bitmap.height)
     }
 }
 
@@ -545,74 +445,49 @@ private final class FlippedClipView: NSClipView {
     override var isFlipped: Bool { true }
 }
 
-/// A clickable color square. Reports whether the click was secondary (right or control-click).
-/// VoiceOver sees a button named after its color.
-final class ColorSwatch: NSView {
-    var color: RGBA = .black {
-        didSet {
-            needsDisplay = true
-            if title == nil { toolTip = ClassicPalette.name(of: color) }
-        }
+extension NSRulerView.UnitName {
+    static let pixels = NSRulerView.UnitName("Pixels")
+}
+
+/// Paint's full-screen view: the picture alone on black, at actual size or shrunk to fit.
+final class FullScreenViewer: NSObject {
+    private let window: NSWindow
+    private let onClose: () -> Void
+
+    init(image: CGImage, screen: NSScreen, onClose: @escaping () -> Void) {
+        self.onClose = onClose
+        let fullScreenWindow = FullScreenWindow(contentRect: screen.frame, styleMask: .borderless, backing: .buffered, defer: false)
+        window = fullScreenWindow
+        super.init()
+        window.backgroundColor = .black
+        window.level = .screenSaver
+        window.isReleasedWhenClosed = false
+        let points = NSSize(width: CGFloat(image.width) / screen.backingScaleFactor, height: CGFloat(image.height) / screen.backingScaleFactor)
+        let scale = min(1, screen.frame.width / points.width, screen.frame.height / points.height)
+        let size = NSSize(width: points.width * scale, height: points.height * scale)
+        let view = NSImageView(frame: NSRect(x: (screen.frame.width - size.width) / 2, y: (screen.frame.height - size.height) / 2, width: size.width, height: size.height))
+        view.image = NSImage(cgImage: image, size: size)
+        view.imageScaling = .scaleProportionallyUpOrDown
+        let content = NSView(frame: NSRect(origin: .zero, size: screen.frame.size))
+        content.addSubview(view)
+        window.contentView = content
+        fullScreenWindow.onDismiss = { [weak self] in self?.close() }
     }
 
-    /// The swatch's role ("Color 1"); its color is then read as the value.
-    var title: String? {
-        didSet { toolTip = title }
+    func show() {
+        window.makeKeyAndOrderFront(nil)
+        NSCursor.setHiddenUntilMouseMoves(true)
     }
 
-    /// VoiceOver's stand-in for the right click, for swatches where it does something else.
-    var secondaryActionName: String?
-
-    var onClick: ((_ secondary: Bool) -> Void)?
-    private let side: CGFloat
-
-    init(size: CGFloat) {
-        side = size
-        super.init(frame: NSRect(x: 0, y: 0, width: size, height: size))
-    }
-
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) is not supported")
-    }
-
-    override var intrinsicContentSize: NSSize { NSSize(width: side, height: side) }
-
-    override func draw(_ dirtyRect: NSRect) {
-        color.nsColor.setFill()
-        bounds.fill()
-        NSColor.separatorColor.setStroke()
-        NSBezierPath(rect: bounds.insetBy(dx: 0.5, dy: 0.5)).stroke()
-    }
-
-    override func mouseDown(with event: NSEvent) {
-        onClick?(event.modifierFlags.contains(.control))
-    }
-
-    override func rightMouseDown(with event: NSEvent) {
-        onClick?(true)
-    }
-
-    // MARK: - Accessibility
-
-    override func isAccessibilityElement() -> Bool { true }
-    override func accessibilityRole() -> NSAccessibility.Role? { .button }
-    override func accessibilityLabel() -> String? { title ?? ClassicPalette.name(of: color) }
-    override func accessibilityValue() -> Any? { title == nil ? nil : ClassicPalette.name(of: color) }
-
-    override func accessibilityPerformPress() -> Bool {
-        onClick?(false)
-        return true
-    }
-
-    override func accessibilityCustomActions() -> [NSAccessibilityCustomAction]? {
-        guard let secondaryActionName else { return nil }
-        return [NSAccessibilityCustomAction(name: secondaryActionName) { [weak self] in
-            self?.onClick?(true)
-            return true
-        }]
+    func close() {
+        window.orderOut(nil)
+        onClose()
     }
 }
 
-extension NSRulerView.UnitName {
-    static let pixels = NSRulerView.UnitName("Pixels")
+private final class FullScreenWindow: NSWindow {
+    var onDismiss: (() -> Void)?
+    override var canBecomeKey: Bool { true }
+    override func keyDown(with event: NSEvent) { onDismiss?() }
+    override func mouseDown(with event: NSEvent) { onDismiss?() }
 }

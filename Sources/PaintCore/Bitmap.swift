@@ -119,6 +119,18 @@ extension Bitmap {
         }
     }
 
+    /// Copies `rect` from the canvas into `pixels`, a buffer from `copyPixels()`.
+    public func store(_ rect: PixelRect, into pixels: inout [UInt32]) {
+        let rect = rect.intersection(bounds)
+        guard !rect.isEmpty else { return }
+        pixels.withUnsafeMutableBufferPointer { target in
+            for y in rect.y..<rect.maxY {
+                let offset = y * width + rect.x
+                (target.baseAddress! + offset).update(from: storage + offset, count: rect.width)
+            }
+        }
+    }
+
     private func snapshot(_ rect: PixelRect, from source: UnsafeBufferPointer<UInt32>) -> RegionSnapshot {
         let rect = rect.intersection(bounds)
         var pixels: [UInt32] = []

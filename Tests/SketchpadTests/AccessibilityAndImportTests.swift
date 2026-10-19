@@ -17,48 +17,65 @@ private func pngData(width: Int, height: Int, color: RGBA) throws -> Data {
 
 @MainActor
 @Suite(.serialized) struct AccessibilityTests {
-    @Test func everySidebarControlHasAName() throws {
+    @Test func everyRibbonControlHasAName() throws {
         let document = CanvasDocument()
         let controller = CanvasWindowController(document: document)
         defer { withExtendedLifetime(document) {} }
-        let views = descendants(of: try #require(controller.window?.contentView))
-
-        let popups = views.compactMap { $0 as? NSPopUpButton }
-        #expect(popups.count >= 7)
-        for popup in popups {
-            #expect(popup.accessibilityLabel()?.isEmpty == false, "\(popup.titleOfSelectedItem ?? "?")")
-        }
-        let buttonNames = Set(views.compactMap { ($0 as? NSButton)?.accessibilityLabel() })
-        #expect(Set(Tool.allCases.map(\.title)).isSubset(of: buttonNames), "image-only tool buttons are named")
-        for control in views.compactMap({ $0 as? NSSegmentedControl }) {
-            for index in 0..<control.segmentCount {
-                let name = control.label(forSegment: index) ?? control.image(forSegment: index)?.accessibilityDescription
-                #expect(name?.isEmpty == false)
+        let ribbon = try #require(controller.ribbon)
+        controller.state.tool = .text // shows the Text tab too
+        for tab in 0..<3 {
+            ribbon.select(tab)
+            let views = descendants(of: ribbon)
+            let buttons = views.compactMap { $0 as? RibbonButton }
+            #expect(!buttons.isEmpty)
+            for button in buttons {
+                #expect(button.accessibilityLabel()?.isEmpty == false)
+            }
+            for box in views.compactMap({ $0 as? NSComboBox }) {
+                #expect(box.accessibilityLabel()?.isEmpty == false)
             }
         }
+        ribbon.select(0)
+        let toolNames = Set(controller.controls.tools.values.compactMap { $0.accessibilityLabel() })
+        #expect(toolNames == Set([Tool.pencil, .fill, .text, .eraser, .picker, .magnifier].map(\.title)))
 
-        let swatches = views.compactMap { $0 as? ColorSwatch }
-        #expect(swatches.count == 22)
+        let swatches = controller.controls.palettes[0].swatches
+        #expect(swatches.count == 30)
         #expect(swatches.allSatisfy { $0.isAccessibilityElement() && $0.accessibilityRole() == .button })
-        #expect(Set(swatches.compactMap { $0.accessibilityLabel() }).count == 22, "every swatch has its own name")
+        #expect(Set(swatches.prefix(20).compactMap { $0.accessibilityLabel() }).count == 20, "every color has its own name")
+        #expect(swatches.suffix(10).allSatisfy { !$0.isAccessibilityEnabled() }, "custom slots start empty")
     }
 
-    @Test func paletteSwatchesSetBothColorsWithoutAMouse() throws {
+    @Test func paletteSetsTheActiveColorSlot() throws {
         let document = CanvasDocument()
         let controller = CanvasWindowController(document: document)
         defer { withExtendedLifetime(document) {} }
-        let swatches = descendants(of: try #require(controller.window?.contentView)).compactMap { $0 as? ColorSwatch }
+        let swatches = controller.controls.palettes[0].swatches
         let red = try #require(swatches.first { $0.accessibilityLabel() == localized("Red") })
-        let color1 = try #require(swatches.first { $0.title == localized("Color 1") })
-        let color2 = try #require(swatches.first { $0.title == localized("Color 2") })
+        let green = try #require(swatches.first { $0.accessibilityLabel() == localized("Green") })
 
         #expect(red.accessibilityPerformPress())
-        #expect(color1.accessibilityValue() as? String == localized("Red"))
-        let setAsColor2 = try #require(red.accessibilityCustomActions()?.first)
-        #expect(setAsColor2.name == localized("Set as Color 2"))
-        #expect(setAsColor2.handler?() == true)
-        #expect(color2.accessibilityValue() as? String == localized("Red"))
+        #expect(controller.state.primary == RGBA(237, 28, 36))
+        controller.controls.color2[0].perform()
+        #expect(controller.state.activeSlot == .secondary)
+        #expect(green.accessibilityPerformPress())
+        #expect(controller.state.secondary == RGBA(34, 177, 76), "now the palette sets Color 2")
+        let other = try #require(red.accessibilityCustomActions()?.first)
+        #expect(other.handler?() == true)
+        #expect(controller.state.primary == RGBA(237, 28, 36), "the other slot (Shift+click)")
         #expect(ClassicPalette.name(of: RGBA(1, 2, 3)) == "Red 1, Green 2, Blue 3")
+    }
+
+    @Test func editColorsFillsTheCustomRow() {
+        let document = CanvasDocument()
+        let controller = CanvasWindowController(document: document)
+        defer { withExtendedLifetime(document) {} }
+        for value in 0..<12 { controller.applyEditedColor(RGBA(UInt8(value), 0, 0)) }
+        controller.applyEditedColor(RGBA(5, 0, 0))
+        let custom = controller.controls.palettes[0].swatches.suffix(10).map(\.color)
+        #expect(custom.first == RGBA(2, 0, 0), "past 10 the oldest drop off")
+        #expect(custom.last == RGBA(5, 0, 0), "a repeated color moves to the end")
+        #expect(controller.state.primary == RGBA(5, 0, 0))
     }
 
     @Test func canvasDescribesItsSizeAndTool() {

@@ -9,20 +9,10 @@ final class ImagePropertiesForm: NSObject, NSTextFieldDelegate {
         var blackAndWhite: Bool
     }
 
-    enum Unit: Int, CaseIterable {
-        case inches, centimeters, pixels
+    typealias Unit = Preferences.Unit
 
-        var title: String {
-            switch self {
-            case .inches: localized("Inches")
-            case .centimeters: localized("Centimeters")
-            case .pixels: localized("Pixels")
-            }
-        }
-    }
-
-    /// The largest side accepted (this app's limit; it keeps the bitmap under 1.6 GB).
-    static let maxSide = 20_000
+    /// Paint's fields take five digits.
+    static let maxSide = 99_999
 
     let dotsPerInch: Double
     let unitControl = NSSegmentedControl(labels: Unit.allCases.map(\.title), trackingMode: .selectOne, target: nil, action: nil)
@@ -40,7 +30,8 @@ final class ImagePropertiesForm: NSObject, NSTextFieldDelegate {
         pixelHeight = Double(height)
         super.init()
 
-        unitControl.selectedSegment = Unit.pixels.rawValue
+        // Paint remembers the unit (UnitSetting) and uses it for the rulers and status bar too.
+        unitControl.selectedSegment = Preferences.unit.rawValue
         unitControl.target = self
         unitControl.action = #selector(unitChanged)
         colorControl.selectedSegment = 1
@@ -127,12 +118,13 @@ final class ImagePropertiesForm: NSObject, NSTextFieldDelegate {
     }
 
     @objc func unitChanged() {
+        Preferences.unit = unit
         showSize()
     }
 
     @objc func restoreDefaultSize() {
-        pixelWidth = Double(CanvasDocument.newCanvasSize.width)
-        pixelHeight = Double(CanvasDocument.newCanvasSize.height)
+        pixelWidth = Double(CanvasDocument.defaultCanvasSize.width)
+        pixelHeight = Double(CanvasDocument.defaultCanvasSize.height)
         showSize()
     }
 
@@ -160,4 +152,89 @@ final class PrintView: NSView {
         context.interpolationQuality = .none
         context.draw(image, in: bounds)
     }
+}
+
+/// Paint's Page Setup extras beside the system's paper and scale settings: centering on the
+/// page, and fitting the picture to a number of pages across and down.
+final class PageSetupAccessory: NSViewController, NSPrintPanelAccessorizing {
+    static let fitWideKey = NSPrintInfo.AttributeKey("SketchpadFitPagesWide")
+    static let fitTallKey = NSPrintInfo.AttributeKey("SketchpadFitPagesTall")
+
+    private let centerHorizontally = NSButton(checkboxWithTitle: localized("Center horizontally"), target: nil, action: nil)
+    private let centerVertically = NSButton(checkboxWithTitle: localized("Center vertically"), target: nil, action: nil)
+    private let fit = NSButton(checkboxWithTitle: localized("Fit to"), target: nil, action: nil)
+    private let wide = NSTextField(string: "1")
+    private let tall = NSTextField(string: "1")
+
+    private var info: NSPrintInfo? { representedObject as? NSPrintInfo }
+
+    override func loadView() {
+        for control in [centerHorizontally, centerVertically, fit] {
+            control.target = self
+            control.action = #selector(changed)
+        }
+        for field in [wide, tall] {
+            field.target = self
+            field.action = #selector(changed)
+            field.widthAnchor.constraint(equalToConstant: 40).isActive = true
+        }
+        let fitRow = NSStackView(views: [fit, wide, NSTextField(labelWithString: localized("pages wide by")), tall, NSTextField(labelWithString: localized("tall"))])
+        let stack = NSStackView(views: [
+            NSTextField(labelWithString: localized("Centering:")), centerHorizontally, centerVertically,
+            NSTextField(labelWithString: localized("Scaling:")), fitRow,
+        ])
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.edgeInsets = NSEdgeInsets(top: 8, left: 20, bottom: 8, right: 20)
+        stack.frame.size = stack.fittingSize
+        view = stack
+    }
+
+    override var representedObject: Any? {
+        didSet { showSettings() }
+    }
+
+    private func showSettings() {
+        guard let info, isViewLoaded else { return }
+        centerHorizontally.state = info.isHorizontallyCentered ? .on : .off
+        centerVertically.state = info.isVerticallyCentered ? .on : .off
+        let pages = Self.fitPages(of: info)
+        fit.state = pages == nil ? .off : .on
+        wide.integerValue = pages?.wide ?? 1
+        tall.integerValue = pages?.tall ?? 1
+        wide.isEnabled = pages != nil
+        tall.isEnabled = pages != nil
+    }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        showSettings()
+    }
+
+    @objc private func changed() {
+        guard let info else { return }
+        info.isHorizontallyCentered = centerHorizontally.state == .on
+        info.isVerticallyCentered = centerVertically.state == .on
+        let on = fit.state == .on
+        info.dictionary()[Self.fitWideKey] = on ? max(1, wide.integerValue) : 0
+        info.dictionary()[Self.fitTallKey] = on ? max(1, tall.integerValue) : 0
+        wide.isEnabled = on
+        tall.isEnabled = on
+    }
+
+    /// The Fit To setting, or `nil` when the picture prints at its scale.
+    static func fitPages(of info: NSPrintInfo) -> (wide: Int, tall: Int)? {
+        let wide = (info.dictionary()[fitWideKey] as? Int) ?? 0, tall = (info.dictionary()[fitTallKey] as? Int) ?? 0
+        return wide > 0 && tall > 0 ? (wide, tall) : nil
+    }
+
+    /// The scale that makes a picture of `size` points span the Fit To pages.
+    static func fitScale(for size: NSSize, info: NSPrintInfo) -> CGFloat? {
+        guard let pages = fitPages(of: info), size.width > 0, size.height > 0 else { return nil }
+        let page = info.imageablePageBounds.size
+        return min(page.width * CGFloat(pages.wide) / size.width, page.height * CGFloat(pages.tall) / size.height)
+    }
+
+    func localizedSummaryItems() -> [[NSPrintPanel.AccessorySummaryKey: String]] { [] }
+    func keyPathsForValuesAffectingPreview() -> Set<String> { [] }
 }

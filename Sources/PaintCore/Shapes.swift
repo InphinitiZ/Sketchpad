@@ -48,7 +48,71 @@ public struct ShapeStyle: Sendable {
     }
 }
 
+/// How a shape being edited has been turned and flipped (Paint's Rotate and Flip commands act
+/// on the active shape). Quarter turns are clockwise and applied after the flips.
+public struct ShapeOrientation: Equatable, Sendable {
+    public var quarterTurns = 0
+    public var flippedHorizontally = false
+    public var flippedVertically = false
+
+    public static let upright = ShapeOrientation()
+
+    public init(quarterTurns: Int = 0, flippedHorizontally: Bool = false, flippedVertically: Bool = false) {
+        self.quarterTurns = quarterTurns
+        self.flippedHorizontally = flippedHorizontally
+        self.flippedVertically = flippedVertically
+    }
+
+    /// The orientation after one more of Paint's Image > Rotate or Flip commands.
+    public func applying(_ transform: CanvasTransform) -> ShapeOrientation {
+        var result = self
+        switch transform {
+        case .rotate(.clockwise): result.quarterTurns += 1
+        case .rotate(.counterclockwise): result.quarterTurns += 3
+        case .rotate(.halfTurn): result.quarterTurns += 2
+        // A flip after turning mirrors the turned shape: flip the other axis before the turn.
+        case .flipHorizontal:
+            if result.quarterTurns % 2 == 0 { result.flippedHorizontally.toggle() } else { result.flippedVertically.toggle() }
+        case .flipVertical:
+            if result.quarterTurns % 2 == 0 { result.flippedVertically.toggle() } else { result.flippedHorizontally.toggle() }
+        default: break
+        }
+        result.quarterTurns %= 4
+        return result
+    }
+
+    /// Maps a path drawn upright in a box centered on `center` to this orientation.
+    func transform(around center: CGPoint) -> CGAffineTransform {
+        var t = CGAffineTransform(translationX: center.x, y: center.y)
+        t = t.rotated(by: CGFloat(quarterTurns) * .pi / 2)
+        t = t.scaledBy(x: flippedHorizontally ? -1 : 1, y: flippedVertically ? -1 : 1)
+        return t.translatedBy(x: -center.x, y: -center.y)
+    }
+}
+
 extension Bitmap {
+    /// Draws a box shape filling `box` (in canvas pixels), turned and flipped by `orientation`.
+    @discardableResult
+    public func drawShape(_ kind: ShapeKind, in box: PixelRect, orientation: ShapeOrientation, style: ShapeStyle) -> PixelRect {
+        guard orientation != .upright else {
+            return drawShape(kind, from: PixelPoint(x: box.x, y: box.y), to: PixelPoint(x: box.maxX - 1, y: box.maxY - 1), style: style)
+        }
+        // Lay the shape out upright in a box of the turned size, then turn it into place.
+        let frame = box.cgRect
+        let center = CGPoint(x: frame.midX, y: frame.midY)
+        let upright = orientation.quarterTurns % 2 == 0 ? frame : CGRect(x: center.x - frame.height / 2, y: center.y - frame.width / 2, width: frame.height, height: frame.width)
+        let lineWidth = CGFloat(max(1, style.lineWidth))
+        let inset = style.outline == nil ? 0 : lineWidth / 2
+        let inner = upright.insetBy(dx: inset, dy: inset)
+        var transform = orientation.transform(around: center)
+        guard inner.width > 0, inner.height > 0, let path = ShapeGeometry.path(for: kind, in: inner)?.copy(using: &transform) else {
+            guard let outline = style.outline, let whole = ShapeGeometry.path(for: kind, in: upright)?.copy(using: &transform) else { return .zero }
+            let filled = ShapeStyle(outline: nil, fill: outline, antialiased: style.antialiased, fillMedium: style.outlineMedium)
+            return render(whole, style: filled, closed: true)
+        }
+        return render(path, style: style, closed: true, miterJoins: kind == .rectangle)
+    }
+
     /// Draws a line or a box shape spanning the pixels from `a` to `b` and returns the area
     /// it may have touched. Box shapes keep their outline inside the dragged box. The curve
     /// and polygon draw as a straight line here, which is how they start.

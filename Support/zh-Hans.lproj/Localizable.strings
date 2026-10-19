@@ -30,13 +30,13 @@
 "Diamond" = "菱形";
 "Pentagon" = "五边形";
 "Hexagon" = "六边形";
-"Right Arrow" = "右箭头";
-"Left Arrow" = "左箭头";
-"Up Arrow" = "上箭头";
-"Down Arrow" = "下箭头";
-"Four-point Star" = "四角星";
-"Five-point Star" = "五角星";
-"Six-point Star" = "六角星";
+"Right Arrow" = "向右的箭头";
+"Left Arrow" = "向左的箭头";
+"Up Arrow" = "向上的箭头";
+"Down Arrow" = "向下的箭头";
+"Four-point Star" = "四角星形";
+"Five-point Star" = "五角星形";
+"Six-point Star" = "六角星形";
 "Rounded Rectangular Callout" = "圆角矩形标注";
 "Oval Callout" = "椭圆形标注";
 "Cloud Callout" = "云形标注";
@@ -73,9 +73,9 @@
 "Image" = "图像";
 "Crop to Selection" = "裁剪到选区";
 "Resize and Skew…" = "调整大小和扭曲…";
-"Rotate Right 90°" = "向右旋转 90°";
-"Rotate Left 90°" = "向左旋转 90°";
-"Rotate 180°" = "旋转 180°";
+"Rotate Right 90°" = "向右旋转 90 度";
+"Rotate Left 90°" = "向左旋转 90 度";
+"Rotate 180°" = "旋转 180 度";
 "Flip Vertical" = "垂直翻转";
 "Flip Horizontal" = "水平翻转";
 "View" = "查看";
@@ -104,21 +104,16 @@
 "Colors" = "颜色";
 "Color 1" = "颜色 1";
 "Color 2" = "颜色 2";
-"Shape" = "形状";
 "Outline" = "轮廓";
 "Fill" = "填充";
 "No outline" = "无轮廓线";
-"No fill" = "无填充";
+"No fill" = "不填充";
 "Solid color" = "纯色";
 "Transparent selection" = "透明选择";
 "Bold" = "粗体";
 "Italic" = "斜体";
 "Underline" = "下划线";
-"Opaque background" = "不透明背景";
 "%ld px" = "%ld 像素";
-"%ld pt" = "%ld 磅";
-"%ld, %ld px" = "%1$ld, %2$ld 像素";
-"%ld × %ld px" = "%1$ld × %2$ld 像素";
 
 /* Resize and Skew */
 "Resize and Skew" = "调整大小和扭曲";
@@ -134,8 +129,8 @@
 
 /* Image Properties */
 "Image Properties" = "图像属性";
-"Last Saved:" = "上次保存时间：";
-"Size on disk:" = "磁盘上的大小：";
+"Last Saved:" = "上次保存日期：";
+"Size on disk:" = "占用空间：";
 "Resolution:" = "分辨率：";
 "%ld DPI" = "%ld DPI";
 "Not Available" = "不可用";
@@ -171,7 +166,6 @@
 "Blue-gray" = "蓝灰色";
 "Lavender" = "淡紫色";
 "Red %ld, Green %ld, Blue %ld" = "红 %1$ld，绿 %2$ld，蓝 %3$ld";
-"Set as Color 2" = "设为颜色 2";
 
 /* VoiceOver */
 "Canvas, %ld × %ld px" = "画布，%1$ld × %2$ld 像素";
@@ -179,18 +173,141 @@
 "Font size" = "字号";
 
 /* Scanner, camera and Continuity Camera */
-"From Scanner or Camera…" = "从扫描仪或照相机获取…";
-"From Scanner or Camera" = "从扫描仪或照相机获取";
+"From Scanner or Camera…" = "从扫描仪或照相机…";
+"From Scanner or Camera" = "从扫描仪或照相机";
 "Import from iPhone or iPad" = "从 iPhone 或 iPad 导入";
 "Select a scanner or camera." = "请选择扫描仪或照相机。";
 "Scan" = "扫描";
 
 /* Textured brushes, outlines and fills */
-"Oil Brush" = "油画刷";
+"Oil Brush" = "颜料刷";
 "Crayon" = "蜡笔";
 "Marker" = "记号笔";
-"Natural Pencil" = "自然铅笔";
-"Watercolor Brush" = "水彩画刷";
-"Oil" = "油画";
-"Natural pencil" = "自然铅笔";
+"Natural Pencil" = "普通铅笔";
+"Watercolor Brush" = "水彩笔刷";
+"Oil" = "油画颜料";
+"Natural pencil" = "普通铅笔";
 "Watercolor" = "水彩";
+
+/* Handles */
+"Resize Canvas" = "调整画布大小";
+"Invert Color" = "反色";
+"Ribbon" = "功能区";
+"Copy Selection" = "复制选区";
+"Invert Selection" = "反向选择";
+"Send in Email…" = "在电子邮件中发送…";
+"Set as Desktop Background" = "设置为桌面背景";
+"Tile" = "平铺";
+"Center" = "居中";
+"Paste From…" = "粘贴来源…";
+"Larger Size" = "加粗";
+"Smaller Size" = "变细";
+
+/* Ribbon (Paint's zh-CN terms) */
+"Home" = "主页";
+"Clipboard" = "剪贴板";
+"Paste from" = "粘贴来源";
+"Select" = "选择";
+"Selection shapes" = "选择形状";
+"Selection options" = "选择选项";
+"Select all" = "全选";
+"Invert selection" = "反向选择";
+"Image" = "图像";
+"Edit colors" = "编辑颜色";
+"Color 1 (foreground color)" = "颜色 1（前景色）";
+"Color 2 (background color)" = "颜色 2（背景色）";
+"Zoom in" = "放大";
+"Zoom out" = "缩小";
+"100%" = "100%";
+"Show or hide" = "显示或隐藏";
+"Status bar" = "状态栏";
+"Display" = "显示";
+"Full screen" = "全屏";
+"Full Screen" = "全屏";
+"Font family" = "字体系列";
+"Strikethrough" = "删除线";
+"Background" = "背景";
+"Opaque" = "不透明";
+"Transparent" = "透明";
+"Save as" = "另存为";
+"PNG picture" = "PNG 图片";
+"JPEG picture" = "JPEG 图片";
+"BMP picture" = "BMP 图片";
+"GIF picture" = "GIF 图片";
+"Other formats" = "其他格式";
+"Print" = "打印";
+"Page setup…" = "页面设置…";
+"Print preview" = "打印预览";
+"From scanner or camera…" = "从扫描仪或照相机…";
+"Send in email…" = "在电子邮件中发送…";
+"Set as desktop background" = "设置为桌面背景";
+"Properties" = "属性";
+"About Paint" = "关于画图";
+"Exit" = "退出";
+"Recent pictures" = "最近查看的图片";
+
+/* Status bar */
+"Pointer position" = "指针位置";
+"Selection size" = "选区大小";
+"Canvas size" = "画布大小";
+"File size" = "文件大小";
+"Size: None" = "大小: 无";
+"Size: %@" = "大小: %@";
+
+/* Palette */
+"Empty custom color" = "空的自定义颜色";
+"Set the Other Color" = "设为另一个颜色";
+
+/* Messages */
+"You must save the picture before setting it as the desktop background." = "在将图片设置为桌面背景前，必须先保存。";
+"There is not enough memory to make a picture that large." = "没有足够的内存来创建这么大的图片。";
+"%ld × %ld pixels is more than this app can hold." = "%1$ld × %2$ld 像素超出了本应用能处理的大小。";
+"Saving in this format may reduce the picture's color quality." = "以此格式保存图片可能会降低颜色质量。";
+"Do you want to continue?" = "要继续吗？";
+"Continue" = "继续";
+"Monochrome Bitmap" = "单色位图";
+"16 Color Bitmap" = "16 色位图";
+"256 Color Bitmap" = "256 色位图";
+"24-bit Bitmap" = "24 位位图";
+"BMP colors:" = "BMP 颜色：";
+"Converting to black and white loses the picture's colors." = "转换为黑白图像会丢失图片的颜色信息。";
+"in" = "英寸";
+"cm" = "厘米";
+"px" = "像素";
+"Format" = "格式";
+"Center horizontally" = "水平居中";
+"Center vertically" = "垂直居中";
+"Fit to" = "调整为";
+"pages wide by" = "页宽 ×";
+"tall" = "页高";
+"Centering:" = "居中方式：";
+"Scaling:" = "缩放比例：";
+
+/* Ribbon tooltips */
+"Paste the contents of the Clipboard." = "粘贴剪贴板上的内容。";
+"Cut the selection and put it on the Clipboard." = "剪切所选内容并放到剪贴板上。";
+"Copy the selection to the Clipboard." = "将所选内容复制到剪贴板。";
+"Select part of the picture to move, copy or change it." = "选择图片的一部分，以便移动、复制或修改。";
+"Crop the picture to the selection." = "将图片裁剪为所选内容。";
+"Resize and skew the picture or the selection." = "调整图片或所选内容的大小，或使其倾斜。";
+"Rotate or flip the picture or the selection." = "旋转或翻转图片或所选内容。";
+"Paint with one of the brushes." = "用一种刷子绘画。";
+"Choose the outline of shapes, drawn in color 1." = "选择形状的轮廓，以颜色 1 绘制。";
+"Choose the fill of shapes, drawn in color 2." = "选择形状的填充，以颜色 2 绘制。";
+"Choose the width for the selected tool." = "选择当前工具的粗细。";
+"Used by the pencil, the brushes and shape outlines. Click here, then pick a color." = "用于铅笔、刷子和形状轮廓。单击此处，然后选择颜色。";
+"Used by the eraser and shape fills. Click here, then pick a color." = "用于橡皮擦和形状填充。单击此处，然后选择颜色。";
+"Make a color of your own; it is added to the custom colors." = "自己调配颜色，并添加到自定义颜色中。";
+"Zoom in on the picture." = "放大图片。";
+"Zoom out of the picture." = "缩小图片。";
+"Show the picture at 100%." = "以 100% 显示图片。";
+"Show the picture on the whole screen." = "全屏显示图片。";
+"Show a small view of the whole picture while you are zoomed in." = "放大时显示整张图片的缩略视图。";
+"Fill the text box with color 2." = "用颜色 2 填充文本框。";
+"Let the picture show through behind the text." = "让文本后面的图片透出来。";
+"Draw free-form lines with the selected size." = "用选定的粗细绘制任意形状的线条。";
+"Fill an area with color 1, or color 2 with the right button." = "用颜色 1 填充区域，右键则用颜色 2。";
+"Add text to the picture." = "在图片中添加文本。";
+"Erase to color 2; with the right button, change only color 1 into color 2." = "用颜色 2 擦除；右键则只把颜色 1 替换为颜色 2。";
+"Take a color from the picture for color 1, or color 2 with the right button." = "从图片中选取颜色作为颜色 1，右键则作为颜色 2。";
+"Zoom in on part of the picture; the right button zooms out." = "放大图片的一部分；右键缩小。";

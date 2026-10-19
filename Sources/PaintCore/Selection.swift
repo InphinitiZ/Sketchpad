@@ -67,6 +67,23 @@ public struct SelectionMask: Equatable, Sendable {
 
     public var isRectangular: Bool { bits == nil }
 
+    /// Everything in `bounds` this selection leaves out (Paint's Invert Selection), or `nil`
+    /// if it covers all of `bounds`.
+    public func inverted(within bounds: PixelRect) -> SelectionMask? {
+        var bits = [Bool](repeating: true, count: bounds.width * bounds.height)
+        for y in max(rect.y, bounds.y)..<min(rect.maxY, bounds.maxY) {
+            for x in max(rect.x, bounds.x)..<min(rect.maxX, bounds.maxX) where covers(localX: x - rect.x, localY: y - rect.y) {
+                bits[(y - bounds.y) * bounds.width + (x - bounds.x)] = false
+            }
+        }
+        guard bits.contains(true) else { return nil }
+        let corners = [
+            PixelPoint(x: 0, y: 0), PixelPoint(x: bounds.width - 1, y: 0),
+            PixelPoint(x: bounds.width - 1, y: bounds.height - 1), PixelPoint(x: 0, y: bounds.height - 1),
+        ]
+        return SelectionMask(rect: bounds, bits: bits, outline: corners)
+    }
+
     /// Whether the selection covers the canvas pixel `p`.
     public func contains(_ p: PixelPoint) -> Bool {
         guard p.x >= rect.x, p.x < rect.maxX, p.y >= rect.y, p.y < rect.maxY else { return false }
@@ -170,15 +187,32 @@ public final class SelectionSession {
 
     public var isFloating: Bool { floating != nil }
 
-    /// Picks the selected pixels up, leaving `background` in the hole.
-    public func lift(background: RGBA, transparent: RGBA?) {
+    /// Picks the selected pixels up, leaving `background` in the hole, or leaving the
+    /// original in place when `keepingOriginal` (Paint's Ctrl+drag copy).
+    public func lift(background: RGBA, transparent: RGBA?, keepingOriginal: Bool = false) {
         guard floating == nil else { return }
         transparentColor = transparent
         let pixels = bitmap.pixels(in: mask, outside: background)
-        dirty = dirty.union(bitmap.fill(mask, with: background))
+        if !keepingOriginal { dirty = dirty.union(bitmap.fill(mask, with: background)) }
         base = bitmap.copyPixels()
         floating = pixels
         dirty = dirty.union(bitmap.stamp(pixels, mask: mask, skipping: transparent))
+    }
+
+    /// Leaves a copy of the lifted pixels where they are now, and floats on from there (Paint's
+    /// Ctrl+drag of a floating selection, and every step of a Shift+drag smear).
+    public func dropCopy() {
+        guard floating != nil else { return }
+        bitmap.store(mask.rect, into: &base!)
+    }
+
+    /// How far the selection may move: Paint keeps at least its edge on the canvas.
+    public func clampedOffset(dx: Int, dy: Int) -> (dx: Int, dy: Int) {
+        let rect = mask.rect
+        return (
+            min(max(dx, -rect.maxX), bitmap.width - rect.x),
+            min(max(dy, -rect.maxY), bitmap.height - rect.y)
+        )
     }
 
     /// Moves a lifted selection. Returns the canvas area that changed.
@@ -218,6 +252,26 @@ public final class SelectionSession {
         let changed = old.union(newMask.rect).intersection(bitmap.bounds)
         dirty = dirty.union(changed)
         return changed
+    }
+
+    /// The lifted pixels and their mask, to stretch from while a handle is dragged.
+    public var floatingContent: (grid: PixelGrid, mask: SelectionMask)? {
+        floating.map { (PixelGrid(width: mask.rect.width, height: mask.rect.height, pixels: $0), mask) }
+    }
+
+    /// Stretches lifted pixels to fill `rect`. Each step of a handle drag starts again from
+    /// `source`, the content when the drag began, so a long drag does not blur it step by step.
+    /// Returns the canvas area that changed.
+    @discardableResult
+    public func stretch(_ source: (grid: PixelGrid, mask: SelectionMask), to rect: PixelRect, background: RGBA) -> PixelRect {
+        replaceFloating { _, _ in
+            let resize = CanvasTransform.stretch(width: rect.width, height: rect.height)
+            let mask = source.mask.applying(resize)
+            return (
+                source.grid.applying(resize, background: background.packed),
+                mask.offsetBy(dx: rect.x - mask.rect.x, dy: rect.y - mask.rect.y)
+            )
+        }
     }
 
     /// The selected pixels over `mask.rect`, with pixels outside a free-form mask set to `outside`.

@@ -22,6 +22,14 @@ private let grid = PixelGrid(width: 3, height: 2, pixels: [1, 2, 3, 4, 5, 6])
         #expect(grid.applying(.rotate(.halfTurn), background: 0).pixels == [6, 5, 4, 3, 2, 1])
     }
 
+    @Test func invertColorsFlipsEveryChannelButAlpha() throws {
+        let colors = PixelGrid(width: 2, height: 1, pixels: [RGBA(0, 162, 232).packed, RGBA.white.packed])
+        let inverted = colors.applying(.invertColors, background: 0)
+        #expect(inverted.pixels.map { RGBA(packed: $0) } == [RGBA(255, 93, 23), .black])
+        let mask = try #require(SelectionMask(polygon: [point(0, 0), point(0, 3), point(3, 3)], within: PixelRect(x: 0, y: 0, width: 9, height: 9)))
+        #expect(mask.applying(.invertColors) == mask, "the selection keeps its shape")
+    }
+
     @Test func fourQuarterTurnsAreIdentity() {
         var g = grid
         for _ in 0..<4 { g = g.applying(.rotate(.clockwise), background: 0) }
@@ -31,6 +39,12 @@ private let grid = PixelGrid(width: 3, height: 2, pixels: [1, 2, 3, 4, 5, 6])
     @Test func wholeFactorEnlargeCopiesPixels() {
         let big = grid.applying(.resize(width: 6, height: 4), background: 0)
         #expect(big[0, 0] == 1 && big[1, 1] == 1 && big[2, 0] == 2 && big[5, 3] == 6)
+    }
+
+    @Test func stretchingRepeatsAndDropsPixelsWithoutBlending() {
+        #expect(grid.applying(.stretch(width: 6, height: 2), background: 0).pixels == [1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6])
+        #expect(grid.applying(.stretch(width: 2, height: 1), background: 0).pixels == [4, 6], "the pixel under each new center")
+        #expect(grid.applying(.stretch(width: 3, height: 4), background: 0).pixels == [1, 2, 3, 1, 2, 3, 4, 5, 6, 4, 5, 6])
     }
 
     @Test func halvingAveragesBlocks() {

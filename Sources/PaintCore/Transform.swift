@@ -41,6 +41,24 @@ public enum CanvasTransform: Equatable, Sendable {
     case skewHorizontal(degrees: Int)
     /// Positive angles push the left edge down (the right column stays put).
     case skewVertical(degrees: Int)
+    /// Paint's Invert Color: every channel becomes 255 minus itself.
+    case invertColors
+    /// Dragging a selection handle: rows and columns are repeated or dropped without blending
+    /// (`CImgBrush::SetSize` uses StretchBlt in COLORONCOLOR mode).
+    case stretch(width: Int, height: Int)
+}
+
+extension CanvasTransform {
+    /// The size of a `width`×`height` picture after this transform, without doing it.
+    public func resultSize(width: Int, height: Int) -> (width: Int, height: Int) {
+        switch self {
+        case .flipHorizontal, .flipVertical, .invertColors, .rotate(.halfTurn): (width, height)
+        case .rotate: (height, width)
+        case let .resize(w, h), let .stretch(w, h): (w, h)
+        case let .skewHorizontal(degrees): (width + Skew.offset(height, degrees: degrees), height)
+        case let .skewVertical(degrees): (width, height + Skew.offset(width, degrees: degrees))
+        }
+    }
 }
 
 /// Paint's integer shear, from `CImgWnd::CmdSkewBrush`.
@@ -74,10 +92,19 @@ extension PixelGrid {
             return remapped(width: width, height: height) { x, y in (width - 1 - x, height - 1 - y) }
         case let .resize(newWidth, newHeight):
             return resampled(width: newWidth, height: newHeight)
+        case let .stretch(newWidth, newHeight):
+            // Each target pixel takes the source pixel under its center.
+            return remapped(width: newWidth, height: newHeight) { x, y in
+                ((2 * x + 1) * width / (2 * newWidth), (2 * y + 1) * height / (2 * newHeight))
+            }
         case let .skewHorizontal(degrees):
             return skewed(degrees: degrees, horizontal: true, background: background)
         case let .skewVertical(degrees):
             return skewed(degrees: degrees, horizontal: false, background: background)
+        case .invertColors:
+            var result = self
+            for i in pixels.indices { result.pixels[i] = pixels[i] ^ 0x00FF_FFFF }
+            return result
         }
     }
 
@@ -186,6 +213,7 @@ extension SelectionMask {
     /// rectangular (a skewed rectangle's corners are background pixels, still selected, as in
     /// Paint); free-form masks and their outlines are transformed with the pixels.
     public func applying(_ transform: CanvasTransform) -> SelectionMask {
+        guard transform != .invertColors else { return self }
         let size = PixelGrid(width: rect.width, height: rect.height, filledWith: 0).applying(transform, background: 0)
         let newRect = PixelRect(x: rect.x, y: rect.y, width: size.width, height: size.height)
         guard let outline else { return SelectionMask(rect: newRect) }
@@ -214,7 +242,7 @@ extension SelectionMask {
             return PixelPoint(x: p.y, y: width - 1 - p.x)
         case .rotate(.halfTurn):
             return PixelPoint(x: width - 1 - p.x, y: height - 1 - p.y)
-        case let .resize(newWidth, newHeight):
+        case let .resize(newWidth, newHeight), let .stretch(newWidth, newHeight):
             return PixelPoint(x: p.x * newWidth / width, y: p.y * newHeight / height)
         case let .skewHorizontal(degrees):
             let extra = Skew.offset(height, degrees: degrees)
@@ -224,6 +252,8 @@ extension SelectionMask {
             let extra = Skew.offset(width, degrees: degrees)
             let lean = Skew.offset(width - 1 - p.x, degrees: degrees)
             return PixelPoint(x: p.x, y: p.y + (degrees > 0 ? lean : extra - lean))
+        case .invertColors:
+            return p
         }
     }
 }

@@ -24,6 +24,11 @@ extension CanvasView {
         applyTransforms([.flipVertical], actionName: localized("Flip"))
     }
 
+    /// Paint's Invert Color (Ctrl+Shift+I): the selection if there is one, else the picture.
+    @objc func invertColor(_ sender: Any?) {
+        applyTransforms([.invertColors], actionName: localized("Invert Color"))
+    }
+
     /// Paint's Resize and Skew dialog (Ctrl+W there; ⌘W is Close on the Mac).
     @objc func resizeAndSkew(_ sender: Any?) {
         guard let window else { return }
@@ -38,13 +43,28 @@ extension CanvasView {
         guard let window else { return }
         finishInteractions()
         ImagePropertiesForm.run(for: document, on: window) { [weak self] result in
-            self?.applyImageProperties(result)
+            guard let self else { return }
+            (self.window?.windowController as? CanvasWindowController)?.applyUnit()
+            guard result.blackAndWhite, self.document.bitmap.grid.losesColors(at: .monochrome) else {
+                self.applyImageProperties(result)
+                return
+            }
+            // Paint asks before throwing the colors away.
+            let alert = NSAlert()
+            alert.messageText = localized("Converting to black and white loses the picture's colors.")
+            alert.informativeText = localized("Do you want to continue?")
+            alert.addButton(withTitle: localized("Continue"))
+            alert.addButton(withTitle: localized("Cancel"))
+            alert.beginSheetModal(for: window) { response in
+                if response == .alertFirstButtonReturn { self.applyImageProperties(result) }
+            }
         }
     }
 
     /// Changes the canvas size (new area in color 2) and/or converts to black and white,
     /// as one undo step.
     func applyImageProperties(_ result: ImagePropertiesForm.Result) {
+        guard Self.fitsInMemory(width: result.width, height: result.height) else { return }
         let original = document.bitmap.grid
         var grid = original
         if result.width != grid.width || result.height != grid.height {
@@ -57,10 +77,44 @@ extension CanvasView {
         document.replaceBitmap(Bitmap(grid: grid), actionName: localized("Image Properties"))
     }
 
+    /// Pictures are kept as 32-bit pixels; past 400 million of them (1.6 GB) Paint would run out
+    /// of memory, so say so instead of trying.
+    static let maxPixelCount = 400_000_000
+
+    static func fitsInMemory(width: Int, height: Int) -> Bool {
+        guard width.multipliedReportingOverflow(by: height).partialValue > maxPixelCount || width.multipliedReportingOverflow(by: height).overflow else { return true }
+        let alert = NSAlert()
+        alert.messageText = localized("There is not enough memory to make a picture that large.")
+        alert.informativeText = localized(format: "%ld × %ld pixels is more than this app can hold.", width, height)
+        alert.runModal()
+        return false
+    }
+
     /// Applies `transforms` in order as one undo step. Uncovered areas are filled with color 2.
     func applyTransforms(_ transforms: [CanvasTransform], actionName: String) {
         commitText()
         guard !transforms.isEmpty else { return }
+        let start = selection?.mask.rect ?? document.bitmap.bounds
+        let size = transforms.reduce((start.width, start.height)) { $1.resultSize(width: $0.0, height: $0.1) }
+        guard Self.fitsInMemory(width: size.0, height: size.1) else { return }
+        // Rotate, Flip and Invert Color act on an active shape; anything else draws it first.
+        if activeShape != nil {
+            let turnsShape = transforms.allSatisfy {
+                switch $0 {
+                case .rotate, .flipHorizontal, .flipVertical, .invertColors: true
+                default: false
+                }
+            }
+            guard turnsShape else {
+                commitActiveShape()
+                return applyTransforms(transforms, actionName: actionName)
+            }
+            for transform in transforms {
+                if transform == .invertColors { activeShape?.invertedColors.toggle() } else { activeShape?.apply(transform) }
+            }
+            redrawActiveShape()
+            return
+        }
         if let selection {
             var changed = PixelRect.zero
             for transform in transforms {
@@ -98,7 +152,9 @@ final class ResizeSkewForm: NSObject, NSTextFieldDelegate {
         }
     }
 
+    /// Paint's limits: 1–500% by percentage, 1–99999 pixels by size (five-digit fields).
     static let maxPercent = 500
+    static let maxPixels = 99_999
 
     let originalWidth: Int
     let originalHeight: Int
@@ -152,8 +208,8 @@ final class ResizeSkewForm: NSObject, NSTextFieldDelegate {
             width = scaled(originalWidth, percent: value(horizontalField, default: 100))
             height = scaled(originalHeight, percent: value(verticalField, default: 100))
         } else {
-            width = min(max(value(horizontalField, default: originalWidth), 1), originalWidth * Self.maxPercent / 100)
-            height = min(max(value(verticalField, default: originalHeight), 1), originalHeight * Self.maxPercent / 100)
+            width = min(max(value(horizontalField, default: originalWidth), 1), Self.maxPixels)
+            height = min(max(value(verticalField, default: originalHeight), 1), Self.maxPixels)
         }
         let maxSkew = Skew.maxDegrees
         return Result(

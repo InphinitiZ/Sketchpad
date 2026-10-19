@@ -30,6 +30,12 @@ enum MainMenu {
             .separator(),
             item(localized("From Scanner or Camera…"), #selector(AppDelegate.importFromScannerOrCamera(_:))),
             fromDevice,
+            item(localized("Send in Email…"), #selector(CanvasDocument.sendInEmail(_:))),
+            submenu(localized("Set as Desktop Background"), [
+                item(localized("Fill"), #selector(CanvasDocument.setDesktopBackgroundFill(_:))),
+                item(localized("Tile"), #selector(CanvasDocument.setDesktopBackgroundTile(_:))),
+                item(localized("Center"), #selector(CanvasDocument.setDesktopBackgroundCenter(_:))),
+            ]),
             .separator(),
             item(localized("Close"), #selector(NSWindow.performClose(_:)), "w"),
             item(localized("Save"), #selector(NSDocument.save(_:)), "s"),
@@ -49,8 +55,10 @@ enum MainMenu {
             item(localized("Cut"), #selector(CanvasView.cut(_:)), "x"),
             item(localized("Copy"), #selector(CanvasView.copy(_:)), "c"),
             item(localized("Paste"), #selector(CanvasView.paste(_:)), "v"),
+            item(localized("Paste From…"), #selector(CanvasView.pasteFrom(_:))),
             item(localized("Delete"), #selector(CanvasView.delete(_:))),
             item(localized("Select All"), #selector(NSText.selectAll(_:)), "a"),
+            item(localized("Invert Selection"), #selector(CanvasView.invertSelection(_:))),
             .separator(),
             item(localized("Transparent Selection"), #selector(CanvasWindowController.toggleTransparentSelection(_:))),
         ]))
@@ -66,6 +74,19 @@ enum MainMenu {
             .separator(),
             item(localized("Flip Vertical"), #selector(CanvasView.flipVertical(_:))),
             item(localized("Flip Horizontal"), #selector(CanvasView.flipHorizontal(_:))),
+            .separator(),
+            item(localized("Invert Color"), #selector(CanvasView.invertColor(_:)), "i", [.command, .shift]),
+            .separator(),
+            item(localized("Larger Size"), #selector(CanvasView.largerSize(_:)), "]"),
+            item(localized("Smaller Size"), #selector(CanvasView.smallerSize(_:)), "["),
+        ]))
+
+        // Paint's text box takes Ctrl+B, Ctrl+I and Ctrl+U; here they are ⌘B, ⌘I and ⌘U.
+        main.addItem(submenu(localized("Format"), [
+            item(localized("Bold"), #selector(CanvasWindowController.toggleBold(_:)), "b"),
+            item(localized("Italic"), #selector(CanvasWindowController.toggleItalic(_:)), "i"),
+            item(localized("Underline"), #selector(CanvasWindowController.toggleUnderline(_:)), "u"),
+            item(localized("Strikethrough"), #selector(CanvasWindowController.toggleStrikethrough(_:))),
         ]))
 
         main.addItem(submenu(localized("View"), [
@@ -77,6 +98,8 @@ enum MainMenu {
             item(localized("Rulers"), #selector(CanvasWindowController.toggleRulers(_:)), "r"),
             item(localized("Gridlines"), #selector(CanvasWindowController.toggleGridlines(_:)), "'"),
             item(localized("Status Bar"), #selector(CanvasWindowController.toggleStatusBar(_:))),
+            .separator(),
+            item(localized("Full Screen"), #selector(CanvasWindowController.showFullScreen(_:)), String(UnicodeScalar(NSF11FunctionKey)!), []),
             item(localized("Thumbnail"), #selector(CanvasWindowController.toggleThumbnail(_:))),
         ]))
 

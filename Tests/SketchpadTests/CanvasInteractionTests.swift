@@ -156,8 +156,7 @@ private final class Harness {
         style.points = 36
         let frame = NSRect(x: 20, y: 30, width: 300, height: 60)
         let box = TextBox(frame: frame, style: style, color: .black, background: .white)
-        box.textView.string = "Ty"
-        box.apply(style: style, color: .black, background: .white)
+        box.textView.insertText("Ty", replacementRange: NSRange(location: 0, length: 0))
 
         let bitmap = Bitmap(width: 400, height: 200)
         box.render(into: bitmap, opaque: false, background: .white)
@@ -168,7 +167,7 @@ private final class Harness {
             inkRows.append(y)
         }
         let top = try #require(inkRows.first), bottom = try #require(inkRows.last)
-        #expect(top >= 30 && bottom < 90, "text stays inside its box")
+        #expect(top >= 30 && CGFloat(bottom) < box.textView.frame.maxY, "text stays inside its box")
         // Upright: the "T" crossbar is the first inked row, so the leftmost ink there is the
         // crossbar's left end, near the box's left edge.
         let crossbarLeft = try #require((0..<bitmap.width).first { bitmap[point($0, top)] != .white })
@@ -288,6 +287,9 @@ private final class Harness {
         h.drag(from: point(100, 100), to: point(200, 200))
         #expect(h.bitmap[point(150, 150)] == blue, "filled with color 2")
         #expect(h.bitmap[point(105, 105)] == .white, "diamond leaves the corners empty")
+        #expect(h.canvas.activeShape != nil, "the shape stays editable")
+        h.canvas.commitActiveShape()
+        h.endEvent()
         #expect(h.document.undoManager?.undoActionName == ShapeKind.diamond.title)
     }
 
@@ -305,6 +307,9 @@ private final class Harness {
 
         h.drag(from: point(200, 100), to: point(250, 120))
         #expect(h.canvas.pendingShape == nil)
+        #expect(h.canvas.activeShape?.kind == .curve, "finished curves stay editable")
+        h.canvas.commitActiveShape()
+        h.endEvent()
         #expect(h.document.undoManager?.undoActionName == ShapeKind.curve.title)
         h.canvas.undo(nil)
         h.endEvent()
@@ -387,23 +392,25 @@ private final class Harness {
 @MainActor
 @Suite(.serialized) struct PropertiesAndViewTests {
     @Test func propertiesConvertUnitsWithTheImageResolution() {
-        let form = ImagePropertiesForm(width: 960, height: 480, dotsPerInch: 96, lastSaved: nil, sizeOnDisk: nil)
-        #expect(form.view.frame.width > 200)
-        form.unitControl.selectedSegment = ImagePropertiesForm.Unit.inches.rawValue
-        form.unitChanged()
-        #expect(form.widthField.stringValue == "10.00")
-        #expect(form.heightField.stringValue == "5.00")
+        withFreshPreferences {
+            let form = ImagePropertiesForm(width: 960, height: 480, dotsPerInch: 96, lastSaved: nil, sizeOnDisk: nil)
+            #expect(form.view.frame.width > 200)
+            form.unitControl.selectedSegment = ImagePropertiesForm.Unit.inches.rawValue
+            form.unitChanged()
+            #expect(form.widthField.stringValue == "10.00")
+            #expect(form.heightField.stringValue == "5.00")
 
-        form.widthField.stringValue = "2.5"
-        form.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: form.widthField))
-        form.unitControl.selectedSegment = ImagePropertiesForm.Unit.centimeters.rawValue
-        form.unitChanged()
-        #expect(form.widthField.stringValue == "6.35")
-        #expect(form.result == .init(width: 240, height: 480, blackAndWhite: false))
+            form.widthField.stringValue = "2.5"
+            form.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: form.widthField))
+            form.unitControl.selectedSegment = ImagePropertiesForm.Unit.centimeters.rawValue
+            form.unitChanged()
+            #expect(form.widthField.stringValue == "6.35")
+            #expect(form.result == .init(width: 240, height: 480, blackAndWhite: false))
 
-        form.restoreDefaultSize()
-        form.colorControl.selectedSegment = 0
-        #expect(form.result == .init(width: 800, height: 600, blackAndWhite: true))
+            form.restoreDefaultSize()
+            form.colorControl.selectedSegment = 0
+            #expect(form.result == .init(width: 800, height: 600, blackAndWhite: true))
+        }
     }
 
     @Test func growingTheCanvasFillsWithColor2AndUndoes() {
@@ -429,18 +436,21 @@ private final class Harness {
     }
 
     @Test func viewMenuToggles() {
-        let controller = CanvasWindowController(document: CanvasDocument())
-        let scrollView = controller.window?.contentView?.subviews.compactMap { $0 as? NSScrollView }.first
-        let canvas = scrollView?.documentView as? CanvasView
+        withFreshPreferences {
+            let document = CanvasDocument()
+            let controller = CanvasWindowController(document: document)
+            defer { withExtendedLifetime(document) {} }
 
-        controller.toggleRulers(nil)
-        #expect(scrollView?.rulersVisible == true)
-        controller.toggleGridlines(nil)
-        #expect(canvas?.showsGridlines == true)
-        #expect(scrollView?.magnification == CanvasView.gridlineMagnification, "zooms in so the grid shows")
+            controller.toggleRulers(nil)
+            #expect(controller.scrollView.rulersVisible == true)
+            #expect(controller.controls.rulers?.state == .on, "the View tab follows")
+            controller.toggleGridlines(nil)
+            #expect(controller.canvasView.showsGridlines == true)
+            #expect(controller.scrollView.magnification == 1, "Paint leaves the zoom alone")
 
-        let item = NSMenuItem(title: "Rulers", action: #selector(CanvasWindowController.toggleRulers(_:)), keyEquivalent: "")
-        _ = controller.validateMenuItem(item)
-        #expect(item.state == .on)
+            let item = NSMenuItem(title: "Rulers", action: #selector(CanvasWindowController.toggleRulers(_:)), keyEquivalent: "")
+            _ = controller.validateMenuItem(item)
+            #expect(item.state == .on)
+        }
     }
 }

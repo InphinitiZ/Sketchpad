@@ -47,6 +47,7 @@
 				<string>com.microsoft.bmp</string>
 				<string>com.compuserve.gif</string>
 				<string>public.tiff</string>
+				<string>public.heic</string>
 			</array>
 			<key>NSDocumentClass</key>
 			<string>CanvasDocument</string>

@@ -154,16 +154,27 @@ enum ShapePaint: CaseIterable {
 }
 
 struct TextStyle: Equatable {
-    var family = "Helvetica"
+    var family = TextStyle.defaultFamily
     /// Size in points. Paint renders text at 96 dpi, so one point is 4/3 of a canvas pixel.
-    var points: CGFloat = 12
+    /// Paint starts at 11 pt.
+    var points: CGFloat = 11
     var bold = false
     var italic = false
     var underline = false
+    var strikethrough = false
     /// Paint's "Opaque" text background fills the box with color 2.
     var opaque = false
 
     static let pointSizes: [CGFloat] = [8, 9, 10, 11, 12, 14, 16, 18, 20, 22, 24, 26, 28, 36, 48, 72]
+
+    /// Paint starts in Calibri (Microsoft YaHei in Chinese); on a Mac without them, the closest
+    /// system families.
+    static let defaultFamily: String = {
+        let installed = Set(NSFontManager.shared.availableFontFamilies)
+        let chinese = Locale.preferredLanguages.first?.hasPrefix("zh") == true
+        let wanted = chinese ? ["Microsoft YaHei", "PingFang SC", "Helvetica Neue"] : ["Calibri", "Helvetica Neue", "Helvetica"]
+        return wanted.first(where: installed.contains) ?? "Helvetica"
+    }()
 
     var pixelSize: CGFloat { points * 4 / 3 }
 
@@ -182,15 +193,44 @@ final class EditorState {
         didSet {
             guard tool != oldValue else { return }
             previousTool = oldValue
+            if tool.isSelection { lastSelectionTool = tool }
             notify()
         }
     }
+
+    /// The selection shape last used, which Paint's Select button and S key return to.
+    private(set) var lastSelectionTool: Tool = .select
 
     /// The tool to return to after a one-shot tool such as the color picker.
     private(set) var previousTool: Tool = .pencil
 
     var primary: RGBA = .black { didSet { notify() } }
     var secondary: RGBA = .white { didSet { notify() } }
+
+    enum ColorSlot {
+        case primary, secondary
+    }
+
+    /// Which of Color 1 and Color 2 the palette and Edit Colors set (the ribbon's two toggles).
+    var activeSlot = ColorSlot.primary { didSet { notify() } }
+
+    /// Paint's third palette row: up to 10 colors made with Edit Colors, oldest first.
+    private(set) var customColors: [RGBA] = [] { didSet { notify() } }
+    static let customColorSlots = 10
+
+    /// Sets the active slot's color, or the other one (Paint's Shift+click on the palette).
+    func choose(_ color: RGBA, other: Bool = false) {
+        let slot = other ? (activeSlot == .primary ? ColorSlot.secondary : .primary) : activeSlot
+        if slot == .primary { primary = color } else { secondary = color }
+    }
+
+    /// Records a color made in Edit Colors: an existing copy moves to the end, and past 10 the
+    /// oldest drops off.
+    func addCustomColor(_ color: RGBA) {
+        var colors = customColors.filter { $0 != color }
+        colors.append(color)
+        customColors = Array(colors.suffix(Self.customColorSlots))
+    }
     var shapeKind: ShapeKind = .line { didSet { notify() } }
     /// Paint's Outline gallery (drawn in color 1).
     var shapeOutline = ShapePaint.solid { didSet { notify() } }
@@ -199,7 +239,12 @@ final class EditorState {
     var brushKind: BrushKind = .normal { didSet { notify() } }
     /// When on, pixels of color 2 in a moved or pasted selection are see-through.
     var transparentSelection = false { didSet { notify() } }
-    var textStyle = TextStyle() { didSet { notify() } }
+    var textStyle = Preferences.textStyle {
+        didSet {
+            Preferences.textStyle = textStyle
+            notify()
+        }
+    }
 
     private var sizes: [String: Int] = [:]
     private var observers: [() -> Void] = []

@@ -1,3 +1,5 @@
+import Foundation
+
 /// Hard-edged pixel operations. Classic Paint draws pencil and eraser strokes and flood fills
 /// without antialiasing, so these write pixels directly instead of going through Core Graphics.
 public enum Raster {
@@ -26,26 +28,29 @@ public enum Raster {
 extension Bitmap {
     /// Fills a `size`×`size` square around `p`, the footprint of the pencil and eraser.
     @discardableResult
-    public func stampSquare(at p: PixelPoint, size: Int, color: RGBA) -> PixelRect {
+    public func stampSquare(at p: PixelPoint, size: Int, color: RGBA, replacing target: RGBA? = nil) -> PixelRect {
         let half = size / 2
         let rect = PixelRect(x: p.x - half, y: p.y - half, width: size, height: size).intersection(bounds)
         guard !rect.isEmpty else { return .zero }
         let value = color.packed
+        let only = target?.packed
         for y in rect.y..<rect.maxY {
             let row = y * width
-            for x in rect.x..<rect.maxX {
+            for x in rect.x..<rect.maxX where only == nil || storage[row + x] == only {
                 storage[row + x] = value
             }
         }
         return rect
     }
 
-    /// Drags a square stamp along the line from `a` to `b`.
+    /// Drags a square stamp along the line from `a` to `b`. With `target`, only pixels of exactly
+    /// that color are painted: the eraser's right-button color replacement, which turns Color 1
+    /// into Color 2 and leaves everything else alone.
     @discardableResult
-    public func drawSquareLine(from a: PixelPoint, to b: PixelPoint, size: Int, color: RGBA) -> PixelRect {
+    public func drawSquareLine(from a: PixelPoint, to b: PixelPoint, size: Int, color: RGBA, replacing target: RGBA? = nil) -> PixelRect {
         var changed = PixelRect.zero
         Raster.linePoints(from: a, to: b) { p in
-            changed = changed.union(stampSquare(at: p, size: size, color: color))
+            changed = changed.union(stampSquare(at: p, size: size, color: color, replacing: target))
         }
         return changed
     }
@@ -96,19 +101,44 @@ extension Bitmap {
 
 /// Shift-key constraints for the line and shape tools.
 public enum Constraint {
-    /// Snaps `b` so the segment from `a` is horizontal, vertical or at 45°.
+    /// The pencil's Shift lock: the direction from `anchor` to `p` rounded to a multiple of 45°,
+    /// as a step of -1, 0 or 1 on each axis (`CPencilTool::AdjustPointsForConstraint`).
+    public static func direction(from anchor: PixelPoint, to p: PixelPoint) -> (dx: Int, dy: Int)? {
+        let dx = p.x - anchor.x, dy = p.y - anchor.y
+        guard dx != 0 || dy != 0 else { return nil }
+        let octant = Int(((atan2(Double(dy), Double(dx)) * 180 / .pi + 22.5 + 360).truncatingRemainder(dividingBy: 360) / 45).rounded(.down))
+        let steps = [(1, 0), (1, 1), (0, 1), (-1, 1), (-1, 0), (-1, -1), (0, -1), (1, -1)]
+        return steps[octant % 8]
+    }
+
+    /// `p` moved onto the line through `anchor` along `direction`.
+    public static func project(_ p: PixelPoint, onto anchor: PixelPoint, direction: (dx: Int, dy: Int)) -> PixelPoint {
+        let dx = p.x - anchor.x, dy = p.y - anchor.y
+        switch (direction.dx, direction.dy) {
+        case (_, 0): return PixelPoint(x: p.x, y: anchor.y)
+        case (0, _): return PixelPoint(x: anchor.x, y: p.y)
+        default:
+            // Diagonal: equal steps on both axes.
+            let t = (dx * direction.dx + dy * direction.dy) / 2
+            return PixelPoint(x: anchor.x + t * direction.dx, y: anchor.y + t * direction.dy)
+        }
+    }
+
+    /// Snaps `b` so the segment from `a` is horizontal, vertical or at 45°: within 22.5° of an
+    /// axis it lies on the axis (Paint compares the slope with tan 22.5° and tan 67.5°).
     public static func snap45(from a: PixelPoint, to b: PixelPoint) -> PixelPoint {
         let dx = b.x - a.x, dy = b.y - a.y
-        let adx = abs(dx), ady = abs(dy)
-        if adx > 2 * ady { return PixelPoint(x: b.x, y: a.y) }
-        if ady > 2 * adx { return PixelPoint(x: a.x, y: b.y) }
+        let adx = Double(abs(dx)), ady = Double(abs(dy))
+        if ady < adx * 0.414 { return PixelPoint(x: b.x, y: a.y) }
+        if ady > adx * 2.414 { return PixelPoint(x: a.x, y: b.y) }
         return square(from: a, to: b)
     }
 
-    /// Moves `b` so the box from `a` is square, keeping the drag direction.
+    /// Moves `b` so the box from `a` is square, keeping the drag direction. The side is the
+    /// shorter of the two drag distances, as in Paint.
     public static func square(from a: PixelPoint, to b: PixelPoint) -> PixelPoint {
         let dx = b.x - a.x, dy = b.y - a.y
-        let side = max(abs(dx), abs(dy))
+        let side = min(abs(dx), abs(dy))
         return PixelPoint(x: a.x + (dx < 0 ? -side : side), y: a.y + (dy < 0 ? -side : side))
     }
 }

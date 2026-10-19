@@ -52,8 +52,10 @@ private func point(_ x: Int, _ y: Int) -> PixelPoint { PixelPoint(x: x, y: y) }
     @Test func shiftConstraints() {
         #expect(Constraint.snap45(from: point(0, 0), to: point(10, 2)) == point(10, 0))
         #expect(Constraint.snap45(from: point(0, 0), to: point(1, 9)) == point(0, 9))
-        #expect(Constraint.snap45(from: point(0, 0), to: point(-7, 6)) == point(-7, 7))
-        #expect(Constraint.square(from: point(5, 5), to: point(8, 1)) == point(9, 1))
+        #expect(Constraint.snap45(from: point(0, 0), to: point(-7, 6)) == point(-6, 6), "45°, by the shorter side")
+        #expect(Constraint.snap45(from: point(0, 0), to: point(10, 4)) == point(10, 0), "22° is still horizontal")
+        #expect(Constraint.snap45(from: point(0, 0), to: point(10, 5)) == point(5, 5), "27° snaps to 45°")
+        #expect(Constraint.square(from: point(5, 5), to: point(8, 1)) == point(8, 2), "the shorter side wins")
     }
 }
 
