@@ -166,8 +166,12 @@ final class CanvasWindowController: NSWindowController {
         )
         scrollView.hasHorizontalRuler = true
         scrollView.hasVerticalRuler = true
-        scrollView.horizontalRulerView?.measurementUnits = .pixels
-        scrollView.verticalRulerView?.measurementUnits = .pixels
+        for ruler in [scrollView.horizontalRulerView, scrollView.verticalRulerView].compactMap({ $0 }) {
+            ruler.measurementUnits = .pixels
+            // NSRulerView draws its edge line and labels past its bounds, up through the ribbon
+            // and into the status bar, unless clipped (views no longer clip by default).
+            ruler.clipsToBounds = true
+        }
         scrollView.rulersVisible = false
 
         for view in [ribbon!, scrollView, statusBar] as [NSView] {

@@ -444,6 +444,8 @@ private final class Harness {
             controller.toggleRulers(nil)
             #expect(controller.scrollView.rulersVisible == true)
             #expect(controller.controls.rulers?.state == .on, "the View tab follows")
+            let rulers = [controller.scrollView.horizontalRulerView, controller.scrollView.verticalRulerView]
+            #expect(rulers.allSatisfy { $0?.clipsToBounds == true }, "rulers draw nothing over the ribbon or status bar")
             controller.toggleGridlines(nil)
             #expect(controller.canvasView.showsGridlines == true)
             #expect(controller.scrollView.magnification == 1, "Paint leaves the zoom alone")
