@@ -1,5 +1,7 @@
 import Testing
 import UniformTypeIdentifiers
+import ImageIO
+import Foundation
 @testable import PaintCore
 
 private let red = RGBA(237, 28, 36)
@@ -96,5 +98,32 @@ private func point(_ x: Int, _ y: Int) -> PixelPoint { PixelPoint(x: x, y: y) }
         let bitmap = Bitmap(width: 4, height: 4)
         let data = try ImageCodec.encode(try #require(bitmap.makeImage()), as: type)
         #expect(ImageCodec.decode(data)?.width == 4)
+    }
+}
+
+@Suite struct FormatTests {
+    @Test(arguments: [UTType.gif, UTType.tiff])
+    func twoColorImagesRoundTrip(type: UTType) throws {
+        let bitmap = Bitmap(width: 4, height: 3)
+        bitmap[point(1, 2)] = red
+        let data = try ImageCodec.encode(try #require(bitmap.makeImage()), as: type)
+        let decoded = Bitmap(image: try #require(ImageCodec.decode(data)))
+        #expect(decoded[point(1, 2)] == red)
+        #expect(decoded[point(0, 0)] == .white)
+    }
+
+    @Test func resolutionIsKept() throws {
+        let image = try #require(Bitmap(width: 2, height: 2).makeImage())
+        let data = try ImageCodec.encode(image, as: .png, dotsPerInch: 300)
+        #expect(ImageCodec.decodeWithResolution(data)?.dotsPerInch == 300)
+    }
+
+    @Test func iconsOpenAtTheirLargestSize() throws {
+        let data = NSMutableData()
+        let destination = try #require(CGImageDestinationCreateWithData(data, UTType.ico.identifier as CFString, 2, nil))
+        CGImageDestinationAddImage(destination, try #require(Bitmap(width: 16, height: 16).makeImage()), nil)
+        CGImageDestinationAddImage(destination, try #require(Bitmap(width: 32, height: 32).makeImage()), nil)
+        #expect(CGImageDestinationFinalize(destination))
+        #expect(ImageCodec.decode(data as Data)?.width == 32)
     }
 }

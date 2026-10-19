@@ -13,7 +13,12 @@ final class CanvasWindowController: NSWindowController {
     private let zoomLabel = NSTextField(labelWithString: "")
     private var toolButtons: [Tool: NSButton] = [:]
     private let sizePopup = NSPopUpButton()
-    private let fillCheckbox = NSButton(checkboxWithTitle: "Fill shapes", target: nil, action: nil)
+    private let brushPopup = NSPopUpButton()
+    private let shapePopup = NSPopUpButton()
+    private let outlinePopup = NSPopUpButton()
+    private let fillPopup = NSPopUpButton()
+    private var brushOptions = NSStackView()
+    private var shapeOptions = NSStackView()
     private let transparentCheckbox = NSButton(checkboxWithTitle: "Transparent selection", target: nil, action: nil)
     private let fontPopup = NSPopUpButton()
     private let pointSizePopup = NSPopUpButton()
@@ -24,6 +29,11 @@ final class CanvasWindowController: NSWindowController {
     private let secondarySwatch = ColorSwatch(size: 30)
     /// Which swatch the shared color panel is editing.
     private var editingSecondary = false
+    private let statusBar = NSStackView()
+    private var statusBarHeight: NSLayoutConstraint?
+    private lazy var thumbnail = ThumbnailPanel(scrollView: scrollView) { [weak self] in
+        (self?.document as? CanvasDocument)?.bitmap.makeImage()
+    }
 
     init(document: CanvasDocument) {
         canvasView = CanvasView(document: document, state: state)
@@ -35,6 +45,7 @@ final class CanvasWindowController: NSWindowController {
         )
         window.minSize = NSSize(width: 480, height: 360)
         super.init(window: window)
+        window.delegate = self
 
         buildLayout()
         window.center()
@@ -49,6 +60,12 @@ final class CanvasWindowController: NSWindowController {
         canvasView.onZoomRequest = { [weak self] zoomIn, center in
             self?.stepZoom(up: zoomIn, centeredAt: center)
         }
+        canvasView.onDisplayChange = { [weak self] in self?.thumbnail.setNeedsRefresh() }
+        scrollView.contentView.postsBoundsChangedNotifications = true
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(visibleAreaChanged),
+            name: NSView.boundsDidChangeNotification, object: scrollView.contentView
+        )
         state.observe { [weak self] in self?.syncControls() }
         NotificationCenter.default.addObserver(
             self, selector: #selector(magnificationChanged),
@@ -79,9 +96,18 @@ final class CanvasWindowController: NSWindowController {
         // Paint's gray-blue workspace around the canvas.
         scrollView.backgroundColor = NSColor(srgbRed: 0.79, green: 0.84, blue: 0.91, alpha: 1)
         scrollView.drawsBackground = true
+        NSRulerView.registerUnit(
+            withName: .pixels, abbreviation: "px", unitToPointsConversionFactor: 1,
+            stepUpCycle: [10], stepDownCycle: [0.5]
+        )
+        scrollView.hasHorizontalRuler = true
+        scrollView.hasVerticalRuler = true
+        scrollView.horizontalRulerView?.measurementUnits = .pixels
+        scrollView.verticalRulerView?.measurementUnits = .pixels
+        scrollView.rulersVisible = false
 
         let sidebar = makeSidebar()
-        let statusBar = NSStackView(views: [cursorLabel, NSView(), sizeLabel, zoomLabel])
+        for view in [cursorLabel, NSView(), sizeLabel, zoomLabel] { statusBar.addArrangedSubview(view) }
         statusBar.spacing = 24
         statusBar.edgeInsets = NSEdgeInsets(top: 0, left: 10, bottom: 0, right: 10)
         for label in [cursorLabel, sizeLabel, zoomLabel] {
@@ -107,8 +133,9 @@ final class CanvasWindowController: NSWindowController {
             statusBar.leadingAnchor.constraint(equalTo: content.leadingAnchor),
             statusBar.trailingAnchor.constraint(equalTo: content.trailingAnchor),
             statusBar.bottomAnchor.constraint(equalTo: content.bottomAnchor),
-            statusBar.heightAnchor.constraint(equalToConstant: 24),
         ])
+        statusBarHeight = statusBar.heightAnchor.constraint(equalToConstant: 24)
+        statusBarHeight?.isActive = true
     }
 
     private func makeSidebar() -> NSView {
@@ -124,8 +151,8 @@ final class CanvasWindowController: NSWindowController {
 
         sizePopup.target = self
         sizePopup.action = #selector(sizeChanged(_:))
-        fillCheckbox.target = self
-        fillCheckbox.action = #selector(fillToggled(_:))
+        brushOptions = makeBrushOptions()
+        shapeOptions = makeShapeOptions()
         transparentCheckbox.target = self
         transparentCheckbox.action = #selector(toggleTransparentSelection(_:))
         textOptions = makeTextOptions()
@@ -154,7 +181,8 @@ final class CanvasWindowController: NSWindowController {
 
         let stack = NSStackView(views: [
             heading("Tools"), toolGrid,
-            heading("Size"), sizePopup, fillCheckbox, transparentCheckbox,
+            brushOptions, shapeOptions,
+            heading("Size"), sizePopup, transparentCheckbox,
             textOptions,
             heading("Colors"), colorPair, palette,
         ])
@@ -166,6 +194,83 @@ final class CanvasWindowController: NSWindowController {
         stack.setCustomSpacing(14, after: transparentCheckbox)
         stack.setCustomSpacing(14, after: textOptions)
         return stack
+    }
+
+    /// The brush gallery, shown only while the brush tool is active.
+    private func makeBrushOptions() -> NSStackView {
+        brushPopup.addItems(withTitles: BrushKind.allCases.map(\.title))
+        brushPopup.target = self
+        brushPopup.action = #selector(brushChanged(_:))
+        brushPopup.controlSize = .small
+        let stack = NSStackView(views: [heading("Brush"), brushPopup])
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 6
+        return stack
+    }
+
+    /// The shape gallery with Paint's Outline and Fill choices, shown only for the shape tool.
+    private func makeShapeOptions() -> NSStackView {
+        for kind in ShapeKind.allCases {
+            shapePopup.addItem(withTitle: kind.title)
+            shapePopup.lastItem?.image = Self.icon(for: kind)
+        }
+        outlinePopup.addItems(withTitles: ["No outline", "Solid color"])
+        fillPopup.addItems(withTitles: ["No fill", "Solid color"])
+        for popup in [shapePopup, outlinePopup, fillPopup] {
+            popup.target = self
+            popup.action = #selector(shapeOptionsChanged(_:))
+            popup.controlSize = .small
+        }
+        shapePopup.widthAnchor.constraint(equalToConstant: 126).isActive = true
+        let stack = NSStackView(views: [heading("Shape"), shapePopup, label("Outline"), outlinePopup, label("Fill"), fillPopup])
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 4
+        return stack
+    }
+
+    /// A small outline of the shape for the gallery menu.
+    private static func icon(for kind: ShapeKind) -> NSImage {
+        NSImage(size: NSSize(width: 16, height: 16), flipped: true) { rect in
+            let box = rect.insetBy(dx: 2, dy: 2)
+            let path: CGPath
+            switch kind {
+            case .line:
+                let line = CGMutablePath()
+                line.move(to: CGPoint(x: box.minX, y: box.maxY))
+                line.addLine(to: CGPoint(x: box.maxX, y: box.minY))
+                path = line
+            case .curve:
+                let curve = CGMutablePath()
+                curve.move(to: CGPoint(x: box.minX, y: box.maxY))
+                curve.addCurve(to: CGPoint(x: box.maxX, y: box.minY), control1: CGPoint(x: box.minX, y: box.minY), control2: CGPoint(x: box.maxX, y: box.maxY))
+                path = curve
+            case .polygon:
+                let polygon = CGMutablePath()
+                polygon.addLines(between: [
+                    CGPoint(x: box.minX, y: box.maxY), CGPoint(x: box.minX + 3, y: box.minY),
+                    CGPoint(x: box.maxX, y: box.minY + 4), CGPoint(x: box.midX, y: box.midY), CGPoint(x: box.maxX, y: box.maxY),
+                ])
+                polygon.closeSubpath()
+                path = polygon
+            default:
+                path = ShapeGeometry.path(for: kind, in: box) ?? CGPath(rect: box, transform: nil)
+            }
+            guard let context = NSGraphicsContext.current?.cgContext else { return false }
+            context.addPath(path)
+            context.setStrokeColor(NSColor.labelColor.cgColor)
+            context.setLineWidth(1.2)
+            context.strokePath()
+            return true
+        }
+    }
+
+    private func label(_ title: String) -> NSTextField {
+        let label = NSTextField(labelWithString: title)
+        label.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+        label.textColor = .secondaryLabelColor
+        return label
     }
 
     /// Font controls, shown only while the text tool is active.
@@ -234,14 +339,21 @@ final class CanvasWindowController: NSWindowController {
             button.state = tool == state.tool ? .on : .off
         }
 
-        let options = state.tool.sizeOptions
+        let options = state.sizeOptions
         sizePopup.removeAllItems()
         sizePopup.addItems(withTitles: options.isEmpty ? ["—"] : options.map { "\($0) px" })
         sizePopup.isEnabled = !options.isEmpty
         if let index = options.firstIndex(of: state.size) { sizePopup.selectItem(at: index) }
 
-        fillCheckbox.state = state.fillsShapes ? .on : .off
-        fillCheckbox.isEnabled = state.tool == .rectangle || state.tool == .ellipse
+        brushOptions.isHidden = state.tool != .brush
+        brushPopup.selectItem(at: BrushKind.allCases.firstIndex(of: state.brushKind) ?? 0)
+        shapeOptions.isHidden = state.tool != .shape
+        shapePopup.selectItem(at: ShapeKind.allCases.firstIndex(of: state.shapeKind) ?? 0)
+        outlinePopup.selectItem(at: state.shapeOutline ? 1 : 0)
+        fillPopup.selectItem(at: state.shapeFill ? 1 : 0)
+        // Lines and curves are always outlined and never filled.
+        outlinePopup.isEnabled = state.shapeKind.canFill
+        fillPopup.isEnabled = state.shapeKind.canFill
         transparentCheckbox.state = state.transparentSelection ? .on : .off
 
         let text = state.textStyle
@@ -271,13 +383,19 @@ final class CanvasWindowController: NSWindowController {
     }
 
     @objc private func sizeChanged(_ sender: NSPopUpButton) {
-        let options = state.tool.sizeOptions
+        let options = state.sizeOptions
         guard options.indices.contains(sender.indexOfSelectedItem) else { return }
         state.size = options[sender.indexOfSelectedItem]
     }
 
-    @objc private func fillToggled(_ sender: NSButton) {
-        state.fillsShapes = sender.state == .on
+    @objc private func brushChanged(_ sender: NSPopUpButton) {
+        state.brushKind = BrushKind.allCases[max(0, sender.indexOfSelectedItem)]
+    }
+
+    @objc private func shapeOptionsChanged(_ sender: NSPopUpButton) {
+        state.shapeKind = ShapeKind.allCases[max(0, shapePopup.indexOfSelectedItem)]
+        state.shapeOutline = outlinePopup.indexOfSelectedItem == 1
+        state.shapeFill = fillPopup.indexOfSelectedItem == 1
     }
 
     /// Sidebar checkbox and Edit menu item.
@@ -326,10 +444,41 @@ final class CanvasWindowController: NSWindowController {
     @objc func zoomToActualSize(_ sender: Any?) {
         scrollView.magnification = 1
         updateStatus()
+        thumbnail.refresh()
     }
 
     @objc private func magnificationChanged() {
         updateStatus()
+        thumbnail.refresh()
+    }
+
+    @objc private func visibleAreaChanged() {
+        thumbnail.setNeedsRefresh()
+    }
+
+    // MARK: - View menu
+
+    @objc func toggleRulers(_ sender: Any?) {
+        scrollView.rulersVisible.toggle()
+    }
+
+    @objc func toggleGridlines(_ sender: Any?) {
+        canvasView.showsGridlines.toggle()
+        // Gridlines only show from 400%, so zoom in if needed to make the toggle visible.
+        if canvasView.showsGridlines, scrollView.magnification < CanvasView.gridlineMagnification {
+            scrollView.magnification = CanvasView.gridlineMagnification
+            updateStatus()
+        }
+    }
+
+    @objc func toggleStatusBar(_ sender: Any?) {
+        statusBar.isHidden.toggle()
+        statusBarHeight?.constant = statusBar.isHidden ? 0 : 24
+    }
+
+    @objc func toggleThumbnail(_ sender: Any?) {
+        guard let window else { return }
+        if thumbnail.isVisible { thumbnail.hide() } else { thumbnail.show(attachedTo: window) }
     }
 
     private func stepZoom(up: Bool, centeredAt center: NSPoint?) {
@@ -344,15 +493,33 @@ final class CanvasWindowController: NSWindowController {
             scrollView.magnification = next
         }
         updateStatus()
+        thumbnail.refresh()
     }
 }
 
 extension CanvasWindowController: NSMenuItemValidation {
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
-        if menuItem.action == #selector(toggleTransparentSelection(_:)) {
+        switch menuItem.action {
+        case #selector(toggleTransparentSelection(_:)):
             menuItem.state = state.transparentSelection ? .on : .off
+        case #selector(toggleRulers(_:)):
+            menuItem.state = scrollView.rulersVisible ? .on : .off
+        case #selector(toggleGridlines(_:)):
+            menuItem.state = canvasView.showsGridlines ? .on : .off
+        case #selector(toggleStatusBar(_:)):
+            menuItem.state = statusBar.isHidden ? .off : .on
+        case #selector(toggleThumbnail(_:)):
+            menuItem.state = thumbnail.isVisible ? .on : .off
+        default:
+            break
         }
         return true
+    }
+}
+
+extension CanvasWindowController: NSWindowDelegate {
+    func windowWillClose(_ notification: Notification) {
+        thumbnail.hide()
     }
 }
 
@@ -395,4 +562,8 @@ final class ColorSwatch: NSView {
     override func rightMouseDown(with event: NSEvent) {
         onClick?(true)
     }
+}
+
+extension NSRulerView.UnitName {
+    static let pixels = NSRulerView.UnitName("Pixels")
 }

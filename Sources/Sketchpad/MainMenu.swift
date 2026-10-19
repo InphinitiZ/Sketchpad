@@ -29,6 +29,11 @@ enum MainMenu {
             item("Save", #selector(NSDocument.save(_:)), "s"),
             item("Save As…", #selector(NSDocument.saveAs(_:)), "s", [.command, .shift]),
             item("Revert to Saved", #selector(NSDocument.revertToSaved(_:))),
+            .separator(),
+            item("Image Properties…", #selector(CanvasView.showImageProperties(_:)), "e"),
+            .separator(),
+            item("Page Setup…", #selector(NSDocument.runPageLayout(_:)), "p", [.command, .shift]),
+            item("Print…", #selector(NSDocument.printDocument(_:)), "p"),
         ]))
 
         main.addItem(submenu("Edit", [
@@ -61,6 +66,12 @@ enum MainMenu {
             item("Zoom In", #selector(CanvasWindowController.zoomIn(_:)), "="),
             item("Zoom Out", #selector(CanvasWindowController.zoomOut(_:)), "-"),
             item("Actual Size", #selector(CanvasWindowController.zoomToActualSize(_:)), "0"),
+            .separator(),
+            // ⌘R is Paint's Ctrl+R; ⌘' is the Mac's usual grid shortcut (⌘G is Find Next).
+            item("Rulers", #selector(CanvasWindowController.toggleRulers(_:)), "r"),
+            item("Gridlines", #selector(CanvasWindowController.toggleGridlines(_:)), "'"),
+            item("Status Bar", #selector(CanvasWindowController.toggleStatusBar(_:))),
+            item("Thumbnail", #selector(CanvasWindowController.toggleThumbnail(_:))),
         ]))
 
         let window = submenu("Window", [

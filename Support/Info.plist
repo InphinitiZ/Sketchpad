@@ -40,6 +40,22 @@
 				<string>public.png</string>
 				<string>public.jpeg</string>
 				<string>com.microsoft.bmp</string>
+				<string>com.compuserve.gif</string>
+				<string>public.tiff</string>
+			</array>
+			<key>NSDocumentClass</key>
+			<string>CanvasDocument</string>
+		</dict>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>Icon</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>Alternate</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>com.microsoft.ico</string>
 			</array>
 			<key>NSDocumentClass</key>
 			<string>CanvasDocument</string>

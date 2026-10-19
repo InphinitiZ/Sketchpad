@@ -8,6 +8,8 @@ final class CanvasDocument: NSDocument {
     static let newCanvasSize = (width: 800, height: 600)
 
     private(set) var bitmap = Bitmap(width: newCanvasSize.width, height: newCanvasSize.height)
+    /// Read from the file and written back on save; Image Properties shows it.
+    var dotsPerInch = ImageCodec.defaultDotsPerInch
 
     /// Called when pixels change outside an interactive stroke (undo, redo, revert).
     /// `nil` means the whole canvas, possibly with a new size.
@@ -30,10 +32,11 @@ final class CanvasDocument: NSDocument {
     }
 
     override func read(from data: Data, ofType typeName: String) throws {
-        guard let image = ImageCodec.decode(data) else {
+        guard let decoded = ImageCodec.decodeWithResolution(data) else {
             throw CocoaError(.fileReadCorruptFile)
         }
-        bitmap = Bitmap(image: image)
+        bitmap = Bitmap(image: decoded.image)
+        dotsPerInch = decoded.dotsPerInch
         onBitmapChange?(nil)
     }
 
@@ -42,7 +45,15 @@ final class CanvasDocument: NSDocument {
         guard let image = bitmap.makeImage(), let type = UTType(typeName) else {
             throw CocoaError(.fileWriteUnknown)
         }
-        return try ImageCodec.encode(image, as: type)
+        return try ImageCodec.encode(image, as: type, dotsPerInch: dotsPerInch)
+    }
+
+    override func printOperation(withSettings printSettings: [NSPrintInfo.AttributeKey: Any]) throws -> NSPrintOperation {
+        willWrite?()
+        guard let image = bitmap.makeImage() else { throw CocoaError(.fileWriteUnknown) }
+        let info = printInfo.copy() as! NSPrintInfo
+        info.dictionary().addEntries(from: printSettings)
+        return NSPrintOperation(view: PrintView(image: image, dotsPerInch: dotsPerInch), printInfo: info)
     }
 
     /// Records a finished edit. `before` holds the edited area as it was beforehand.

@@ -34,6 +34,29 @@ extension CanvasView {
         }
     }
 
+    @objc func showImageProperties(_ sender: Any?) {
+        guard let window else { return }
+        finishInteractions()
+        ImagePropertiesForm.run(for: document, on: window) { [weak self] result in
+            self?.applyImageProperties(result)
+        }
+    }
+
+    /// Changes the canvas size (new area in color 2) and/or converts to black and white,
+    /// as one undo step.
+    func applyImageProperties(_ result: ImagePropertiesForm.Result) {
+        let original = document.bitmap.grid
+        var grid = original
+        if result.width != grid.width || result.height != grid.height {
+            grid = grid.withCanvasSize(width: result.width, height: result.height, background: state.secondary.packed)
+        }
+        if result.blackAndWhite {
+            grid = grid.blackAndWhite()
+        }
+        guard grid != original else { return }
+        document.replaceBitmap(Bitmap(grid: grid), actionName: "Image Properties")
+    }
+
     /// Applies `transforms` in order as one undo step. Uncovered areas are filled with color 2.
     func applyTransforms(_ transforms: [CanvasTransform], actionName: String) {
         commitText()

@@ -2,7 +2,7 @@ import AppKit
 import PaintCore
 
 enum Tool: Int, CaseIterable {
-    case select, freeFormSelect, text, pencil, eraser, fill, picker, magnifier, line, rectangle, ellipse
+    case select, freeFormSelect, text, pencil, brush, eraser, fill, picker, magnifier, shape
 
     var title: String {
         switch self {
@@ -10,13 +10,12 @@ enum Tool: Int, CaseIterable {
         case .freeFormSelect: "Free-form Selection"
         case .text: "Text"
         case .pencil: "Pencil"
+        case .brush: "Brushes"
         case .eraser: "Eraser"
         case .fill: "Fill with Color"
         case .picker: "Color Picker"
         case .magnifier: "Magnifier"
-        case .line: "Line"
-        case .rectangle: "Rectangle"
-        case .ellipse: "Oval"
+        case .shape: "Shapes"
         }
     }
 
@@ -26,13 +25,12 @@ enum Tool: Int, CaseIterable {
         case .freeFormSelect: "lasso"
         case .text: "textformat"
         case .pencil: "pencil"
+        case .brush: "paintbrush.pointed"
         case .eraser: "eraser"
         case .fill: "drop.fill"
         case .picker: "eyedropper"
         case .magnifier: "magnifyingglass"
-        case .line: "line.diagonal"
-        case .rectangle: "rectangle"
-        case .ellipse: "circle"
+        case .shape: "square.on.circle"
         }
     }
 
@@ -46,30 +44,52 @@ enum Tool: Int, CaseIterable {
         case .fill: "b"
         case .picker: "i"
         case .magnifier: "z"
-        case .freeFormSelect, .line, .rectangle, .ellipse: nil
-        }
-    }
-
-    /// Size choices offered for the tool, in pixels; empty when size does not apply.
-    var sizeOptions: [Int] {
-        switch self {
-        case .pencil: [1, 2, 3, 4]
-        case .eraser: [4, 6, 8, 10]
-        case .line, .rectangle, .ellipse: [1, 3, 5, 8]
-        case .select, .freeFormSelect, .text, .fill, .picker, .magnifier: []
-        }
-    }
-
-    var shapeKind: ShapeKind? {
-        switch self {
-        case .line: .line
-        case .rectangle: .rectangle
-        case .ellipse: .ellipse
-        default: nil
+        case .freeFormSelect, .brush, .shape: nil
         }
     }
 
     var isSelection: Bool { self == .select || self == .freeFormSelect }
+}
+
+extension ShapeKind {
+    var title: String {
+        switch self {
+        case .line: "Line"
+        case .curve: "Curve"
+        case .oval: "Oval"
+        case .rectangle: "Rectangle"
+        case .roundedRectangle: "Rounded Rectangle"
+        case .polygon: "Polygon"
+        case .triangle: "Triangle"
+        case .rightTriangle: "Right Triangle"
+        case .diamond: "Diamond"
+        case .pentagon: "Pentagon"
+        case .hexagon: "Hexagon"
+        case .rightArrow: "Right Arrow"
+        case .leftArrow: "Left Arrow"
+        case .upArrow: "Up Arrow"
+        case .downArrow: "Down Arrow"
+        case .fourPointStar: "Four-point Star"
+        case .fivePointStar: "Five-point Star"
+        case .sixPointStar: "Six-point Star"
+        case .roundedRectangleCallout: "Rounded Rectangular Callout"
+        case .ovalCallout: "Oval Callout"
+        case .cloudCallout: "Cloud Callout"
+        case .heart: "Heart"
+        case .lightning: "Lightning"
+        }
+    }
+}
+
+extension BrushKind {
+    var title: String {
+        switch self {
+        case .normal: "Brush"
+        case .calligraphy45: "Calligraphy Brush 1"
+        case .calligraphy135: "Calligraphy Brush 2"
+        case .airbrush: "Airbrush"
+        }
+    }
 }
 
 struct TextStyle: Equatable {
@@ -110,18 +130,37 @@ final class EditorState {
 
     var primary: RGBA = .black { didSet { notify() } }
     var secondary: RGBA = .white { didSet { notify() } }
-    var fillsShapes = false { didSet { notify() } }
+    var shapeKind: ShapeKind = .line { didSet { notify() } }
+    /// Paint's Outline gallery, reduced to "No outline" and "Solid color" until textures exist.
+    var shapeOutline = true { didSet { notify() } }
+    /// Paint's Fill gallery: "No fill" or "Solid color" (color 2).
+    var shapeFill = false { didSet { notify() } }
+    var brushKind: BrushKind = .normal { didSet { notify() } }
     /// When on, pixels of color 2 in a moved or pasted selection are see-through.
     var transparentSelection = false { didSet { notify() } }
     var textStyle = TextStyle() { didSet { notify() } }
 
-    private var sizes: [Tool: Int] = [:]
+    private var sizes: [String: Int] = [:]
     private var observers: [() -> Void] = []
 
+    /// Size choices for the current tool, in pixels; empty when size does not apply. Pencil,
+    /// eraser and shape sizes are Paint's; the brush sizes are this app's choice.
+    var sizeOptions: [Int] {
+        switch tool {
+        case .pencil: [1, 2, 3, 4]
+        case .eraser: [4, 6, 8, 10]
+        case .shape: [1, 3, 5, 8]
+        case .brush: brushKind == .airbrush ? [8, 16, 24, 30] : [1, 3, 5, 8]
+        case .select, .freeFormSelect, .text, .fill, .picker, .magnifier: []
+        }
+    }
+
+    private var sizeKey: String { tool == .brush ? "brush.\(brushKind)" : "\(tool)" }
+
     var size: Int {
-        get { sizes[tool] ?? tool.sizeOptions.first ?? 1 }
+        get { sizes[sizeKey] ?? sizeOptions.first ?? 1 }
         set {
-            sizes[tool] = newValue
+            sizes[sizeKey] = newValue
             notify()
         }
     }

@@ -17,6 +17,21 @@ final class CanvasView: NSView {
     var selectionActionName = "Selection"
     /// The open text box, if any.
     var textBox: TextBox?
+    /// A curve or polygon that takes several clicks to finish.
+    var pendingShape: PendingShape?
+    /// Keeps the airbrush spraying while the mouse is held still.
+    private var airbrushTimer: Timer?
+    private var airbrushRandom = SystemRandomNumberGenerator()
+    private var lastShapeKind: ShapeKind
+
+    /// Gridlines between pixels, drawn once zoomed to 400% or more.
+    var showsGridlines = false {
+        didSet { needsDisplay = true }
+    }
+    static let gridlineMagnification: CGFloat = 4
+
+    /// Called after any change to what the canvas shows, for the thumbnail.
+    var onDisplayChange: (() -> Void)?
 
     /// Reports the pixel under the cursor, or `nil` when it leaves the canvas.
     var onCursorMove: ((PixelPoint?) -> Void)?
@@ -28,12 +43,18 @@ final class CanvasView: NSView {
         case lasso([PixelPoint])
         case moveSelection(last: PixelPoint)
         case textBox(start: PixelPoint, end: PixelPoint)
+        /// Dragging a curve's control point (Paint's second and third clicks).
+        case bend
+        /// Dragging the newest polygon vertex.
+        case polygonVertex
     }
 
-    /// A pencil, eraser or shape drag. `before` is the whole canvas as it was at mouse-down, used
+    /// A pencil, brush, eraser or shape drag. `before` is the whole canvas as it was at mouse-down, used
     /// both to redraw rubber-band shapes and to build the undo snapshot once the drag ends.
     struct Stroke {
         let tool: Tool
+        /// For the shape tool, the shape being dragged out.
+        let shapeKind: ShapeKind?
         let usesSecondary: Bool
         let start: PixelPoint
         var last: PixelPoint
@@ -46,6 +67,7 @@ final class CanvasView: NSView {
         self.document = document
         self.state = state
         lastTool = state.tool
+        lastShapeKind = state.shapeKind
         super.init(frame: NSRect(x: 0, y: 0, width: document.bitmap.width, height: document.bitmap.height))
         addTrackingArea(NSTrackingArea(
             rect: .zero,
@@ -69,6 +91,7 @@ final class CanvasView: NSView {
         let size = NSSize(width: document.bitmap.width, height: document.bitmap.height)
         if frame.size != size { setFrameSize(size) }
         if let rect { setNeedsDisplay(rect.cgRect) } else { needsDisplay = true }
+        onDisplayChange?()
     }
 
     /// Called for changes made by the document itself (undo, redo, revert). When the whole
@@ -76,7 +99,9 @@ final class CanvasView: NSView {
     func documentDidChangeBitmap(_ rect: PixelRect?) {
         if rect == nil {
             selection = nil
+            pendingShape = nil
             drag = nil
+            stopAirbrush()
             cancelText()
         }
         bitmapDidChange(rect)
@@ -84,11 +109,16 @@ final class CanvasView: NSView {
 
     /// Commits whatever is in progress (selection, text) so the bitmap is final.
     func finishInteractions() {
+        finishPendingShape()
         commitText()
         commitSelection()
     }
 
     private func stateDidChange() {
+        if state.tool != lastTool || state.shapeKind != lastShapeKind {
+            finishPendingShape()
+            lastShapeKind = state.shapeKind
+        }
         if state.tool != lastTool {
             if !state.tool.isSelection { commitSelection() }
             if state.tool != .text { commitText() }
@@ -115,9 +145,29 @@ final class CanvasView: NSView {
             context.draw(image, in: CGRect(origin: .zero, size: bounds.size))
             context.restoreGState()
         }
+        drawGridlines(in: dirtyRect, context: context)
         if let outline = overlayPath() {
             drawMarchingAnts(outline, in: context)
         }
+    }
+
+    private func drawGridlines(in dirtyRect: NSRect, context: CGContext) {
+        let scale = enclosingScrollView?.magnification ?? 1
+        guard showsGridlines, scale >= Self.gridlineMagnification else { return }
+        let area = dirtyRect.intersection(bounds)
+        context.saveGState()
+        context.setLineWidth(1 / scale)
+        context.setStrokeColor(NSColor(white: 0.5, alpha: 0.5).cgColor)
+        for x in Int(area.minX.rounded(.down))...Int(area.maxX.rounded(.up)) {
+            context.move(to: CGPoint(x: CGFloat(x), y: area.minY))
+            context.addLine(to: CGPoint(x: CGFloat(x), y: area.maxY))
+        }
+        for y in Int(area.minY.rounded(.down))...Int(area.maxY.rounded(.up)) {
+            context.move(to: CGPoint(x: area.minX, y: CGFloat(y)))
+            context.addLine(to: CGPoint(x: area.maxX, y: CGFloat(y)))
+        }
+        context.strokePath()
+        context.restoreGState()
     }
 
     /// The dashed outline to show: the drag in progress, else the selection or text box.
@@ -129,7 +179,7 @@ final class CanvasView: NSView {
             let path = CGMutablePath()
             path.addLines(between: points.map { CGPoint(x: CGFloat($0.x) + 0.5, y: CGFloat($0.y) + 0.5) })
             return path
-        case .stroke, .moveSelection, nil:
+        case .stroke, .moveSelection, .bend, .polygonVertex, nil:
             break
         }
         if let textBox {
@@ -192,14 +242,16 @@ final class CanvasView: NSView {
     }
 
     override func mouseMoved(with event: NSEvent) {
-        reportCursor(pixel(for: event))
+        let p = pixel(for: event)
+        reportCursor(p)
+        hoverPendingShape(at: p)
     }
 
     override func mouseExited(with event: NSEvent) {
         onCursorMove?(nil)
     }
 
-    private func pixel(for event: NSEvent) -> PixelPoint {
+    func pixel(for event: NSEvent) -> PixelPoint {
         let p = convert(event.locationInWindow, from: nil)
         return PixelPoint(x: Int(p.x.rounded(.down)), y: Int(p.y.rounded(.down)))
     }
@@ -237,10 +289,20 @@ final class CanvasView: NSView {
             let filled = bitmap.floodFill(at: p, with: secondary ? state.secondary : state.primary)
             commit(before: before, rect: filled, actionName: Tool.fill.title)
             bitmapDidChange(filled)
-        case .pencil, .eraser, .line, .rectangle, .ellipse:
-            let stroke = Stroke(tool: state.tool, usesSecondary: secondary, start: p, last: p, before: bitmap.copyPixels())
+        case .shape where pendingShape != nil:
+            continuePendingShape(at: p, clickCount: event.clickCount)
+        case .pencil, .brush, .eraser, .shape:
+            let stroke = Stroke(
+                tool: state.tool,
+                shapeKind: state.tool == .shape ? state.shapeKind : nil,
+                usesSecondary: secondary,
+                start: p,
+                last: p,
+                before: bitmap.copyPixels()
+            )
             drag = .stroke(stroke)
-            if state.tool.shapeKind == nil { extend(stroke, to: p, constrained: false) }
+            if stroke.shapeKind == nil { extend(stroke, to: p, constrained: false) }
+            if state.tool == .brush, state.brushKind == .airbrush { startAirbrush() }
         }
     }
 
@@ -264,6 +326,8 @@ final class CanvasView: NSView {
         case let .textBox(start, _):
             drag = .textBox(start: start, end: p)
             needsDisplay = true
+        case .bend, .polygonVertex:
+            dragPendingShape(to: p)
         case nil:
             break
         }
@@ -272,9 +336,15 @@ final class CanvasView: NSView {
     private func ended() {
         let finished = drag
         drag = nil
+        stopAirbrush()
         switch finished {
         case let .stroke(stroke):
-            commit(before: stroke.before, rect: stroke.dirty, actionName: stroke.tool.title)
+            if let kind = stroke.shapeKind, kind == .curve || kind == .polygon {
+                // The first drag only lays down a line; more clicks finish the shape.
+                beginPendingShape(from: stroke, kind: kind)
+            } else {
+                commit(before: stroke.before, rect: stroke.dirty, actionName: stroke.shapeKind?.title ?? stroke.tool.title)
+            }
         case let .marquee(start, end):
             let rect = PixelRect(enclosing: start, end).intersection(document.bitmap.bounds)
             // A click without a drag just deselects.
@@ -283,7 +353,9 @@ final class CanvasView: NSView {
             if let mask = SelectionMask(polygon: points, within: document.bitmap.bounds) { select(mask) }
         case let .textBox(start, end):
             openTextBox(in: PixelRect(enclosing: start, end), dragged: start != end)
-        case .moveSelection, nil:
+        case .bend:
+            releasePendingBend()
+        case .moveSelection, .polygonVertex, nil:
             break
         }
         needsDisplay = true
@@ -291,12 +363,12 @@ final class CanvasView: NSView {
 
     // MARK: - Strokes
 
-    private func extend(_ stroke: Stroke, to p: PixelPoint, constrained: Bool) {
+    func extend(_ stroke: Stroke, to p: PixelPoint, constrained: Bool) {
         var stroke = stroke
         let bitmap = document.bitmap
         let changed: PixelRect
 
-        if let kind = stroke.tool.shapeKind {
+        if let kind = stroke.shapeKind {
             // Rubber band: put back what the previous preview covered, then draw the shape again.
             bitmap.restore(stroke.shapeArea, from: stroke.before)
             var end = p
@@ -305,9 +377,21 @@ final class CanvasView: NSView {
                     ? Constraint.snap45(from: stroke.start, to: p)
                     : Constraint.square(from: stroke.start, to: p)
             }
-            let drawn = bitmap.drawShape(kind, from: stroke.start, to: end, style: shapeStyle(for: stroke))
+            let drawn = bitmap.drawShape(kind, from: stroke.start, to: end, style: shapeStyle(usesSecondary: stroke.usesSecondary, kind: kind))
             changed = stroke.shapeArea.union(drawn)
             stroke.shapeArea = drawn
+            stroke.last = end
+        } else if stroke.tool == .brush {
+            let color = drawingColor(for: stroke)
+            switch state.brushKind {
+            case .normal:
+                changed = bitmap.drawRoundBrushLine(from: stroke.last, to: p, diameter: state.size, color: color)
+            case .calligraphy45, .calligraphy135:
+                changed = bitmap.drawCalligraphyLine(from: stroke.last, to: p, width: state.size, kind: state.brushKind, color: color)
+            case .airbrush:
+                changed = bitmap.spray(at: p, size: state.size, color: color, using: &airbrushRandom)
+            }
+            stroke.last = p
         } else {
             // The eraser paints with the background color, like Paint's left-button eraser.
             let color = stroke.tool == .eraser ? state.secondary : drawingColor(for: stroke)
@@ -323,6 +407,7 @@ final class CanvasView: NSView {
     func cancelStroke() {
         guard case let .stroke(stroke) = drag else { return }
         drag = nil
+        stopAirbrush()
         document.bitmap.restore(stroke.dirty, from: stroke.before)
         bitmapDidChange(stroke.dirty)
     }
@@ -338,13 +423,28 @@ final class CanvasView: NSView {
     }
 
     /// Left drag: outline in color 1, fill in color 2. Right drag swaps them.
-    private func shapeStyle(for stroke: Stroke) -> ShapeStyle {
-        let fill = stroke.usesSecondary ? state.primary : state.secondary
+    func shapeStyle(usesSecondary: Bool, kind: ShapeKind) -> ShapeStyle {
+        let outline = usesSecondary ? state.secondary : state.primary
+        let fill = usesSecondary ? state.primary : state.secondary
         return ShapeStyle(
-            outline: drawingColor(for: stroke),
-            fill: state.fillsShapes && stroke.tool != .line ? fill : nil,
+            outline: state.shapeOutline || !kind.canFill ? outline : nil,
+            fill: state.shapeFill && kind.canFill ? fill : nil,
             lineWidth: state.size
         )
+    }
+
+    // MARK: - Airbrush
+
+    private func startAirbrush() {
+        airbrushTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] _ in
+            guard let self, case let .stroke(stroke) = self.drag else { return }
+            self.extend(stroke, to: stroke.last, constrained: false)
+        }
+    }
+
+    private func stopAirbrush() {
+        airbrushTimer?.invalidate()
+        airbrushTimer = nil
     }
 
     // MARK: - Selection
@@ -437,7 +537,13 @@ final class CanvasView: NSView {
         let plain = event.modifierFlags.intersection([.command, .control, .option]).isEmpty
         switch event.keyCode {
         case 53: // Escape
-            if case .stroke = drag { cancelStroke() } else { commitSelection() }
+            if case .stroke = drag {
+                cancelStroke()
+            } else if pendingShape != nil {
+                cancelPendingShape()
+            } else {
+                commitSelection()
+            }
             return
         case 51 where selection != nil, 117 where selection != nil: // Delete, Forward Delete
             delete(nil)

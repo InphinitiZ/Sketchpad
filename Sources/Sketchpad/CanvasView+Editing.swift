@@ -86,11 +86,13 @@ extension CanvasView: NSMenuItemValidation {
     /// Undo first commits a moved selection, then undoes it: both land in the same undo group,
     /// so the selection jumps back to where it was lifted from.
     @objc func undo(_ sender: Any?) {
+        finishPendingShape()
         commitSelection()
         document.undoManager?.undo()
     }
 
     @objc func redo(_ sender: Any?) {
+        finishPendingShape()
         commitSelection()
         document.undoManager?.redo()
     }

@@ -239,3 +239,30 @@ extension SelectionSession {
         }
     }
 }
+
+extension PixelGrid {
+    /// Image Properties' width and height change the canvas, not the picture: it keeps its
+    /// top-left corner and is cut off or extended with `background`.
+    public func withCanvasSize(width newWidth: Int, height newHeight: Int, background: UInt32) -> PixelGrid {
+        precondition(newWidth > 0 && newHeight > 0)
+        var result = PixelGrid(width: newWidth, height: newHeight, filledWith: background)
+        for y in 0..<min(height, newHeight) {
+            for x in 0..<min(width, newWidth) {
+                result[x, y] = self[x, y]
+            }
+        }
+        return result
+    }
+
+    /// Image Properties' "Black and white": each pixel becomes black or white by its
+    /// luminance (Rec. 601 weights, threshold at the midpoint).
+    public func blackAndWhite() -> PixelGrid {
+        var result = self
+        for i in pixels.indices {
+            let c = RGBA(packed: pixels[i])
+            let luminance = 0.299 * Double(c.r) + 0.587 * Double(c.g) + 0.114 * Double(c.b)
+            result.pixels[i] = (luminance >= 128 ? RGBA.white : RGBA.black).packed
+        }
+        return result
+    }
+}

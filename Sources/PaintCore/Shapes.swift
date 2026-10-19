@@ -1,20 +1,31 @@
 import CoreGraphics
+import Foundation
 
-public enum ShapeKind: Sendable {
-    case line
-    case rectangle
-    case ellipse
+/// Paint's 23 shapes, in its gallery order.
+public enum ShapeKind: CaseIterable, Sendable {
+    case line, curve, oval, rectangle, roundedRectangle, polygon
+    case triangle, rightTriangle, diamond, pentagon, hexagon
+    case rightArrow, leftArrow, upArrow, downArrow
+    case fourPointStar, fivePointStar, sixPointStar
+    case roundedRectangleCallout, ovalCallout, cloudCallout, heart, lightning
+
+    /// Shapes that are drawn by dragging a box (everything but line, curve and polygon).
+    public var fitsBox: Bool { self != .line && self != .curve && self != .polygon }
+
+    public var canFill: Bool { self != .line && self != .curve }
 }
 
 public struct ShapeStyle: Sendable {
-    public var outline: RGBA
+    /// `nil` is Paint's "No outline".
+    public var outline: RGBA?
+    /// `nil` is Paint's "No fill".
     public var fill: RGBA?
     public var lineWidth: Int
     /// On by default: `CDrawShapeOperation`'s constructor sets its antialias flag, so Paint's
     /// shapes have smooth edges even though its pencil does not.
     public var antialiased: Bool
 
-    public init(outline: RGBA, fill: RGBA? = nil, lineWidth: Int = 1, antialiased: Bool = true) {
+    public init(outline: RGBA?, fill: RGBA? = nil, lineWidth: Int = 1, antialiased: Bool = true) {
         self.outline = outline
         self.fill = fill
         self.lineWidth = lineWidth
@@ -23,47 +34,251 @@ public struct ShapeStyle: Sendable {
 }
 
 extension Bitmap {
-    /// Draws a shape spanning the pixels from `a` to `b` and returns the area it may have touched.
-    ///
-    /// Rectangles and ellipses keep their outline inside the dragged box.
+    /// Draws a line or a box shape spanning the pixels from `a` to `b` and returns the area
+    /// it may have touched. Box shapes keep their outline inside the dragged box. The curve
+    /// and polygon draw as a straight line here, which is how they start.
     @discardableResult
     public func drawShape(_ kind: ShapeKind, from a: PixelPoint, to b: PixelPoint, style: ShapeStyle) -> PixelRect {
+        guard kind.fitsBox else {
+            let path = CGMutablePath()
+            path.move(to: center(a))
+            path.addLine(to: center(b))
+            return render(path, style: style, closed: false)
+        }
+
         let lineWidth = CGFloat(max(1, style.lineWidth))
         let box = PixelRect(enclosing: a, b).cgRect
+        let inset = style.outline == nil ? 0 : lineWidth / 2
+        let inner = box.insetBy(dx: inset, dy: inset)
+        guard inner.width > 0, inner.height > 0, let path = ShapeGeometry.path(for: kind, in: inner) else {
+            // Box thinner than the outline: all of it is outline.
+            guard let outline = style.outline, let whole = ShapeGeometry.path(for: kind, in: box) else { return .zero }
+            return render(whole, style: ShapeStyle(outline: nil, fill: outline, antialiased: style.antialiased), closed: true)
+        }
+        return render(path, style: style, closed: true, miterJoins: kind == .rectangle)
+    }
 
+    /// Paint's curve: a line from `a` to `b` bent by two control points.
+    @discardableResult
+    public func drawCurve(from a: PixelPoint, to b: PixelPoint, control1: PixelPoint, control2: PixelPoint, style: ShapeStyle) -> PixelRect {
+        let path = CGMutablePath()
+        path.move(to: center(a))
+        path.addCurve(to: center(b), control1: center(control1), control2: center(control2))
+        return render(path, style: ShapeStyle(outline: style.outline, lineWidth: style.lineWidth, antialiased: style.antialiased), closed: false)
+    }
+
+    /// Paint's polygon: connected vertices, filled once `closed`.
+    @discardableResult
+    public func drawPolygon(_ points: [PixelPoint], closed: Bool, style: ShapeStyle) -> PixelRect {
+        guard let first = points.first else { return .zero }
+        let path = CGMutablePath()
+        path.move(to: center(first))
+        for p in points.dropFirst() { path.addLine(to: center(p)) }
+        if closed { path.closeSubpath() }
+        return render(path, style: closed ? style : ShapeStyle(outline: style.outline, lineWidth: style.lineWidth, antialiased: style.antialiased), closed: closed)
+    }
+
+    private func center(_ p: PixelPoint) -> CGPoint {
+        CGPoint(x: CGFloat(p.x) + 0.5, y: CGFloat(p.y) + 0.5)
+    }
+
+    /// Fills then strokes `path`. Returns the area it may have touched.
+    private func render(_ path: CGPath, style: ShapeStyle, closed: Bool, miterJoins: Bool = false) -> PixelRect {
+        let lineWidth = CGFloat(max(1, style.lineWidth))
         context.saveGState()
         defer { context.restoreGState() }
         context.setShouldAntialias(style.antialiased)
-        context.setStrokeColor(style.outline.cgColor)
         context.setLineWidth(lineWidth)
+        context.setLineCap(closed ? .butt : .round)
+        context.setLineJoin(miterJoins ? .miter : .round)
 
-        switch kind {
-        case .line:
-            context.setLineCap(.round)
-            context.move(to: CGPoint(x: CGFloat(a.x) + 0.5, y: CGFloat(a.y) + 0.5))
-            context.addLine(to: CGPoint(x: CGFloat(b.x) + 0.5, y: CGFloat(b.y) + 0.5))
-            context.strokePath()
-        case .rectangle, .ellipse:
-            let inner = box.insetBy(dx: lineWidth / 2, dy: lineWidth / 2)
-            guard inner.width > 0, inner.height > 0 else {
-                // Box thinner than the outline: it is all outline.
-                context.setFillColor(style.outline.cgColor)
-                if kind == .rectangle { context.fill(box) } else { context.fillEllipse(in: box) }
-                break
-            }
-            let path = kind == .rectangle
-                ? CGPath(rect: inner, transform: nil)
-                : CGPath(ellipseIn: inner, transform: nil)
-            if let fill = style.fill {
-                context.setFillColor(fill.cgColor)
-                context.addPath(path)
-                context.fillPath()
-            }
+        if closed, let fill = style.fill {
+            context.setFillColor(fill.cgColor)
+            context.addPath(path)
+            context.fillPath()
+        }
+        if let outline = style.outline {
+            context.setStrokeColor(outline.cgColor)
             context.addPath(path)
             context.strokePath()
         }
 
-        let pad = Int(lineWidth.rounded(.up)) + 1
-        return PixelRect(enclosing: a, b).insetBy(dx: -pad, dy: -pad).intersection(bounds)
+        let bounds = path.boundingBoxOfPath.insetBy(dx: -lineWidth - 1, dy: -lineWidth - 1)
+        return PixelRect(
+            x: Int(bounds.minX.rounded(.down)),
+            y: Int(bounds.minY.rounded(.down)),
+            width: Int(bounds.width.rounded(.up)) + 1,
+            height: Int(bounds.height.rounded(.up)) + 1
+        ).intersection(self.bounds)
+    }
+}
+
+/// Outlines of the box shapes. Proportions follow the Office AutoShapes that Paint's shape
+/// gallery mirrors; points are given in a unit box (y down) and stretched to fit.
+public enum ShapeGeometry {
+    public static func path(for kind: ShapeKind, in r: CGRect) -> CGPath? {
+        switch kind {
+        case .line, .curve, .polygon:
+            return nil
+        case .rectangle:
+            return CGPath(rect: r, transform: nil)
+        case .oval:
+            return CGPath(ellipseIn: r, transform: nil)
+        case .roundedRectangle:
+            let radius = min(r.width, r.height) * 0.2
+            return CGPath(roundedRect: r, cornerWidth: radius, cornerHeight: radius, transform: nil)
+        case .triangle:
+            return polygon([(0.5, 0), (1, 1), (0, 1)], in: r)
+        case .rightTriangle:
+            return polygon([(0, 0), (1, 1), (0, 1)], in: r)
+        case .diamond:
+            return polygon([(0.5, 0), (1, 0.5), (0.5, 1), (0, 0.5)], in: r)
+        case .pentagon:
+            return polygon(regular(sides: 5, startDegrees: -90), in: r)
+        case .hexagon:
+            return polygon(regular(sides: 6, startDegrees: 0), in: r)
+        case .rightArrow:
+            return polygon([(0, 0.25), (0.5, 0.25), (0.5, 0), (1, 0.5), (0.5, 1), (0.5, 0.75), (0, 0.75)], in: r)
+        case .leftArrow:
+            return polygon([(1, 0.25), (0.5, 0.25), (0.5, 0), (0, 0.5), (0.5, 1), (0.5, 0.75), (1, 0.75)], in: r)
+        case .upArrow:
+            return polygon([(0.25, 1), (0.25, 0.5), (0, 0.5), (0.5, 0), (1, 0.5), (0.75, 0.5), (0.75, 1)], in: r)
+        case .downArrow:
+            return polygon([(0.25, 0), (0.25, 0.5), (0, 0.5), (0.5, 1), (1, 0.5), (0.75, 0.5), (0.75, 0)], in: r)
+        case .fourPointStar:
+            return polygon(star(points: 4, innerRatio: 0.38), in: r)
+        case .fivePointStar:
+            return polygon(star(points: 5, innerRatio: 0.382), in: r)
+        case .sixPointStar:
+            return polygon(star(points: 6, innerRatio: 0.577), in: r)
+        case .roundedRectangleCallout:
+            return roundedRectangleCallout(in: r)
+        case .ovalCallout:
+            return ovalCallout(in: r)
+        case .cloudCallout:
+            return cloudCallout(in: r)
+        case .heart:
+            return heart(in: r)
+        case .lightning:
+            // Office's lightningBolt preset, in its 21600-unit space.
+            let bolt: [(Double, Double)] = [
+                (8458, 0), (0, 3923), (7564, 8416), (4993, 9720), (12197, 13904), (9987, 14934),
+                (21600, 21600), (14768, 12911), (16558, 12016), (11030, 6840), (12575, 6120),
+            ]
+            return polygon(bolt.map { ($0.0 / 21600, $0.1 / 21600) }, in: r)
+        }
+    }
+
+    private static func point(_ p: (Double, Double), in r: CGRect) -> CGPoint {
+        CGPoint(x: r.minX + CGFloat(p.0) * r.width, y: r.minY + CGFloat(p.1) * r.height)
+    }
+
+    private static func polygon(_ points: [(Double, Double)], in r: CGRect) -> CGPath {
+        let path = CGMutablePath()
+        path.addLines(between: points.map { point($0, in: r) })
+        path.closeSubpath()
+        return path
+    }
+
+    /// A regular polygon stretched so its vertices touch all four sides of the box.
+    private static func regular(sides: Int, startDegrees: Double) -> [(Double, Double)] {
+        normalized((0..<sides).map { k in
+            let angle = (startDegrees + 360 * Double(k) / Double(sides)) * .pi / 180
+            return (cos(angle), sin(angle))
+        })
+    }
+
+    private static func star(points: Int, innerRatio: Double) -> [(Double, Double)] {
+        normalized((0..<points * 2).map { k in
+            let radius = k.isMultiple(of: 2) ? 1 : innerRatio
+            let angle = (-90 + 180 * Double(k) / Double(points)) * .pi / 180
+            return (radius * cos(angle), radius * sin(angle))
+        })
+    }
+
+    private static func normalized(_ points: [(Double, Double)]) -> [(Double, Double)] {
+        let xs = points.map(\.0), ys = points.map(\.1)
+        let minX = xs.min()!, maxX = xs.max()!, minY = ys.min()!, maxY = ys.max()!
+        return points.map { (($0.0 - minX) / (maxX - minX), ($0.1 - minY) / (maxY - minY)) }
+    }
+
+    /// Body in the top three quarters, tail pointing down and to the left.
+    private static func roundedRectangleCallout(in r: CGRect) -> CGPath {
+        let body = CGRect(x: r.minX, y: r.minY, width: r.width, height: r.height * 0.75)
+        let radius = min(body.width, body.height) * 0.2
+        let path = CGMutablePath()
+        path.move(to: CGPoint(x: body.minX + radius, y: body.minY))
+        path.addArc(tangent1End: CGPoint(x: body.maxX, y: body.minY), tangent2End: CGPoint(x: body.maxX, y: body.maxY), radius: radius)
+        path.addArc(tangent1End: CGPoint(x: body.maxX, y: body.maxY), tangent2End: CGPoint(x: body.minX, y: body.maxY), radius: radius)
+        path.addLine(to: CGPoint(x: r.minX + r.width * 0.4, y: body.maxY))
+        path.addLine(to: CGPoint(x: r.minX + r.width * 0.1, y: r.maxY))
+        path.addLine(to: CGPoint(x: r.minX + r.width * 0.2, y: body.maxY))
+        path.addArc(tangent1End: CGPoint(x: body.minX, y: body.maxY), tangent2End: CGPoint(x: body.minX, y: body.minY), radius: radius)
+        path.addArc(tangent1End: CGPoint(x: body.minX, y: body.minY), tangent2End: CGPoint(x: body.maxX, y: body.minY), radius: radius)
+        path.closeSubpath()
+        return path
+    }
+
+    private static func ovalCallout(in r: CGRect) -> CGPath {
+        let center = CGPoint(x: r.midX, y: r.minY + r.height * 0.375)
+        let rx = r.width / 2, ry = r.height * 0.375
+        // Leave a gap between 100° and 130° (y down, so lower left) for the tail.
+        let start = 130.0, end = 100.0 + 360
+        let steps = 96
+        let path = CGMutablePath()
+        for i in 0...steps {
+            let angle = (start + (end - start) * Double(i) / Double(steps)) * .pi / 180
+            let p = CGPoint(x: center.x + rx * CGFloat(cos(angle)), y: center.y + ry * CGFloat(sin(angle)))
+            if i == 0 { path.move(to: p) } else { path.addLine(to: p) }
+        }
+        path.addLine(to: CGPoint(x: r.minX + r.width * 0.15, y: r.maxY))
+        path.closeSubpath()
+        return path
+    }
+
+    /// A scalloped oval with three shrinking thought bubbles trailing to the lower left.
+    private static func cloudCallout(in r: CGRect) -> CGPath {
+        // Scallops around a unit circle, then stretched to exactly fill the body area.
+        let bumps = 10
+        func onCircle(_ k: Int) -> CGPoint {
+            let angle = 2 * Double.pi * Double(k) / Double(bumps)
+            return CGPoint(x: cos(angle), y: sin(angle))
+        }
+        let scallops = CGMutablePath()
+        scallops.move(to: onCircle(0))
+        for k in 0..<bumps {
+            let a = onCircle(k), b = onCircle(k + 1)
+            // Push the control point outward so each segment bulges into a scallop.
+            let control = CGPoint(x: (a.x + b.x) / 2 * 1.45, y: (a.y + b.y) / 2 * 1.45)
+            scallops.addQuadCurve(to: b, control: control)
+        }
+        scallops.closeSubpath()
+
+        // The stroke's antialiased fringe at the scallop cusps reaches about a pixel past the
+        // path, so keep the body that much inside the box.
+        let body = CGRect(x: r.minX, y: r.minY, width: r.width, height: r.height * 0.72).insetBy(dx: 1, dy: 1)
+        let extent = scallops.boundingBoxOfPath
+        let fit = CGAffineTransform(translationX: body.minX, y: body.minY)
+            .scaledBy(x: body.width / extent.width, y: body.height / extent.height)
+            .translatedBy(x: -extent.minX, y: -extent.minY)
+        let path = CGMutablePath()
+        path.addPath(scallops, transform: fit)
+        for (fx, fy, size) in [(0.28, 0.80, 0.10), (0.18, 0.90, 0.07), (0.10, 0.97, 0.045)] {
+            let w = r.width * size, h = r.height * size
+            path.addEllipse(in: CGRect(x: r.minX + r.width * fx - w / 2, y: r.minY + r.height * fy - h / 2, width: w, height: h))
+        }
+        return path
+    }
+
+    private static func heart(in r: CGRect) -> CGPath {
+        func p(_ x: Double, _ y: Double) -> CGPoint { point((x, y), in: r) }
+        let path = CGMutablePath()
+        path.move(to: p(0.5, 0.25))
+        path.addCurve(to: p(0, 0.3), control1: p(0.4, 0), control2: p(0, 0))
+        path.addCurve(to: p(0.5, 1), control1: p(0, 0.6), control2: p(0.4, 0.8))
+        path.addCurve(to: p(1, 0.3), control1: p(0.6, 0.8), control2: p(1, 0.6))
+        path.addCurve(to: p(0.5, 0.25), control1: p(1, 0), control2: p(0.6, 0))
+        path.closeSubpath()
+        return path
     }
 }

@@ -34,18 +34,27 @@ private final class Harness {
         send(.leftMouseUp, at: p)
     }
 
-    func send(_ type: NSEvent.EventType, at p: PixelPoint) {
+    func send(_ type: NSEvent.EventType, at p: PixelPoint, clickCount: Int = 1) {
         let location = canvas.convert(NSPoint(x: Double(p.x) + 0.5, y: Double(p.y) + 0.5), to: nil)
         let event = NSEvent.mouseEvent(
             with: type, location: location, modifierFlags: [], timestamp: 0,
-            windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1
+            windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: clickCount, pressure: 1
         )!
         switch type {
         case .leftMouseDown: canvas.mouseDown(with: event)
         case .leftMouseDragged: canvas.mouseDragged(with: event)
+        case .mouseMoved: canvas.mouseMoved(with: event)
         default: canvas.mouseUp(with: event)
         }
         endEvent()
+    }
+
+    func pressEscape() {
+        let event = NSEvent.keyEvent(
+            with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: window.windowNumber,
+            context: nil, characters: "\u{1b}", charactersIgnoringModifiers: "\u{1b}", isARepeat: false, keyCode: 53
+        )!
+        canvas.keyDown(with: event)
     }
 
     /// Lets the run loop turn over so the undo manager closes its per-event group.
@@ -265,5 +274,173 @@ private final class Harness {
     @Test func unchangedStepsAreLeftOut() {
         let result = ResizeSkewForm.Result(width: 800, height: 600, skewHorizontal: 0, skewVertical: 10)
         #expect(result.transforms(from: 800, 600) == [.skewVertical(degrees: 10)])
+    }
+}
+
+@MainActor
+@Suite(.serialized) struct ShapeAndBrushToolTests {
+    @Test func boxShapeIsDrawnWithOutlineAndFill() {
+        let h = Harness()
+        h.state.tool = .shape
+        h.state.shapeKind = .diamond
+        h.state.shapeFill = true
+        h.state.secondary = blue
+        h.drag(from: point(100, 100), to: point(200, 200))
+        #expect(h.bitmap[point(150, 150)] == blue, "filled with color 2")
+        #expect(h.bitmap[point(105, 105)] == .white, "diamond leaves the corners empty")
+        #expect(h.document.undoManager?.undoActionName == "Diamond")
+    }
+
+    @Test func curveTakesALineAndTwoBends() {
+        let h = Harness()
+        h.state.tool = .shape
+        h.state.shapeKind = .curve
+        h.drag(from: point(100, 300), to: point(300, 300))
+        #expect(h.canvas.pendingShape != nil)
+        #expect(h.bitmap[point(200, 300)] == .black, "starts as a straight line")
+
+        h.drag(from: point(200, 300), to: point(200, 100))
+        #expect(h.canvas.pendingShape != nil, "one bend so far")
+        #expect(h.bitmap[point(200, 300)] == .white, "the middle has moved up")
+
+        h.drag(from: point(200, 100), to: point(250, 120))
+        #expect(h.canvas.pendingShape == nil)
+        #expect(h.document.undoManager?.undoActionName == "Curve")
+        h.canvas.undo(nil)
+        h.endEvent()
+        #expect(h.bitmap[point(100, 300)] == .white)
+    }
+
+    @Test func polygonClosesOnDoubleClick() {
+        let h = Harness()
+        h.state.tool = .shape
+        h.state.shapeKind = .polygon
+        h.state.shapeFill = true
+        h.state.secondary = blue
+        h.drag(from: point(100, 100), to: point(300, 100))
+        h.click(at: point(300, 300))
+        h.send(.leftMouseDown, at: point(100, 300), clickCount: 1)
+        h.send(.leftMouseUp, at: point(100, 300), clickCount: 1)
+        #expect(h.canvas.pendingShape != nil)
+        h.send(.leftMouseDown, at: point(100, 300), clickCount: 2)
+        h.send(.leftMouseUp, at: point(100, 300), clickCount: 2)
+
+        #expect(h.canvas.pendingShape == nil)
+        #expect(h.bitmap[point(200, 200)] == blue, "closed and filled")
+        #expect(h.bitmap[point(100, 200)] == .black, "closing side drawn")
+    }
+
+    @Test func escapeDiscardsAPolygonInProgress() {
+        let h = Harness()
+        h.state.tool = .shape
+        h.state.shapeKind = .polygon
+        h.drag(from: point(100, 100), to: point(300, 100))
+        h.send(.mouseMoved, at: point(300, 300))
+        h.pressEscape()
+        #expect(h.canvas.pendingShape == nil)
+        #expect(h.bitmap[point(200, 100)] == .white)
+        #expect(h.document.undoManager?.canUndo == false)
+    }
+
+    @Test func switchingToolsFinishesAPolygon() {
+        let h = Harness()
+        h.state.tool = .shape
+        h.state.shapeKind = .polygon
+        h.drag(from: point(100, 100), to: point(300, 100))
+        h.click(at: point(300, 300))
+        h.state.tool = .pencil
+        #expect(h.canvas.pendingShape == nil)
+        #expect(h.bitmap[point(200, 200)] != .white, "closed back to the first corner (an antialiased diagonal)")
+    }
+
+    @Test func calligraphyBrushPaintsWithColor1() {
+        let h = Harness()
+        h.state.tool = .brush
+        h.state.brushKind = .calligraphy45
+        h.state.size = 8
+        h.state.primary = blue
+        h.drag(from: point(100, 100), to: point(200, 100))
+        #expect(h.bitmap[point(150, 100)] == blue)
+        #expect(h.bitmap[point(150, 97)] == blue, "the nib is 8 pixels tall when dragged sideways")
+        #expect(h.document.undoManager?.undoActionName == "Brushes")
+    }
+
+    @Test func airbrushKeepsSprayingWhileHeld() {
+        let h = Harness()
+        h.state.tool = .brush
+        h.state.brushKind = .airbrush
+        h.state.primary = blue
+        h.send(.leftMouseDown, at: point(200, 200))
+        func dots() -> Int {
+            (170...230).reduce(0) { sum, y in sum + (170...230).filter { h.bitmap[point($0, y)] == blue }.count }
+        }
+        let first = dots()
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.3))
+        #expect(dots() > first, "the timer adds bursts while the mouse is still")
+        h.send(.leftMouseUp, at: point(200, 200))
+        let final = dots()
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.2))
+        #expect(dots() == final, "and stops on mouse-up")
+    }
+}
+
+@MainActor
+@Suite(.serialized) struct PropertiesAndViewTests {
+    @Test func propertiesConvertUnitsWithTheImageResolution() {
+        let form = ImagePropertiesForm(width: 960, height: 480, dotsPerInch: 96, lastSaved: nil, sizeOnDisk: nil)
+        #expect(form.view.frame.width > 200)
+        form.unitControl.selectedSegment = ImagePropertiesForm.Unit.inches.rawValue
+        form.unitChanged()
+        #expect(form.widthField.stringValue == "10.00")
+        #expect(form.heightField.stringValue == "5.00")
+
+        form.widthField.stringValue = "2.5"
+        form.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: form.widthField))
+        form.unitControl.selectedSegment = ImagePropertiesForm.Unit.centimeters.rawValue
+        form.unitChanged()
+        #expect(form.widthField.stringValue == "6.35")
+        #expect(form.result == .init(width: 240, height: 480, blackAndWhite: false))
+
+        form.restoreDefaultSize()
+        form.colorControl.selectedSegment = 0
+        #expect(form.result == .init(width: 800, height: 600, blackAndWhite: true))
+    }
+
+    @Test func growingTheCanvasFillsWithColor2AndUndoes() {
+        let h = Harness()
+        h.state.secondary = blue
+        h.bitmap[point(0, 0)] = .black
+        h.canvas.applyImageProperties(.init(width: 1000, height: 600, blackAndWhite: false))
+        h.endEvent()
+        #expect(h.bitmap.width == 1000)
+        #expect(h.bitmap[point(0, 0)] == .black)
+        #expect(h.bitmap[point(900, 10)] == blue)
+        #expect(h.bitmap[point(700, 10)] == .white, "the old picture is not stretched")
+        h.canvas.undo(nil)
+        h.endEvent()
+        #expect(h.bitmap.width == 800)
+    }
+
+    @Test func printingUsesTheResolution() throws {
+        let document = CanvasDocument()
+        document.dotsPerInch = 96
+        let operation = try document.printOperation(withSettings: [:])
+        #expect(operation.view?.frame.size == NSSize(width: 600, height: 450))
+    }
+
+    @Test func viewMenuToggles() {
+        let controller = CanvasWindowController(document: CanvasDocument())
+        let scrollView = controller.window?.contentView?.subviews.compactMap { $0 as? NSScrollView }.first
+        let canvas = scrollView?.documentView as? CanvasView
+
+        controller.toggleRulers(nil)
+        #expect(scrollView?.rulersVisible == true)
+        controller.toggleGridlines(nil)
+        #expect(canvas?.showsGridlines == true)
+        #expect(scrollView?.magnification == CanvasView.gridlineMagnification, "zooms in so the grid shows")
+
+        let item = NSMenuItem(title: "Rulers", action: #selector(CanvasWindowController.toggleRulers(_:)), keyEquivalent: "")
+        _ = controller.validateMenuItem(item)
+        #expect(item.state == .on)
     }
 }

@@ -102,3 +102,20 @@ private let grid = PixelGrid(width: 3, height: 2, pixels: [1, 2, 3, 4, 5, 6])
         #expect(bitmap[point(2, 2)] == blue)
     }
 }
+
+@Suite struct CanvasPropertyTests {
+    @Test func growingTheCanvasKeepsTopLeftAndFillsTheRest() {
+        let grown = grid.withCanvasSize(width: 4, height: 3, background: 0)
+        #expect(grown.pixels == [1, 2, 3, 0, 4, 5, 6, 0, 0, 0, 0, 0])
+    }
+
+    @Test func shrinkingTheCanvasCutsOffRightAndBottom() {
+        #expect(grid.withCanvasSize(width: 2, height: 1, background: 0).pixels == [1, 2])
+    }
+
+    @Test func blackAndWhiteThresholdsLuminance() {
+        let colors = [RGBA(255, 242, 0), RGBA(63, 72, 204), RGBA(195, 195, 195), RGBA(136, 0, 21)]
+        let converted = PixelGrid(width: 4, height: 1, pixels: colors.map(\.packed)).blackAndWhite()
+        #expect(converted.pixels.map { RGBA(packed: $0) } == [.white, .black, .white, .black])
+    }
+}
