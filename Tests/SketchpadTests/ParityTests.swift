@@ -165,7 +165,7 @@ private func point(_ x: Int, _ y: Int) -> PixelPoint { PixelPoint(x: x, y: y) }
         let info = NSPrintInfo()
         info.dictionary()[PageSetupAccessory.fitWideKey] = 1
         info.dictionary()[PageSetupAccessory.fitTallKey] = 1
-        let page = info.imageablePageBounds.size
+        let page = PageSetupAccessory.printableSize(of: info)
         let scale = PageSetupAccessory.fitScale(for: NSSize(width: page.width * 4, height: page.height), info: info)
         #expect(scale == 0.25)
         info.dictionary()[PageSetupAccessory.fitWideKey] = 0

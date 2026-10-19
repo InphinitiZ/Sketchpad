@@ -27,6 +27,11 @@ struct RibbonControls {
     var opaque: RibbonButton?
     var transparent: RibbonButton?
     var textTab = 2
+    var previewTab = 3
+    var onePage: RibbonButton?
+    var twoPages: RibbonButton?
+    var previousPage: RibbonButton?
+    var nextPage: RibbonButton?
 }
 
 /// Builds Paint's ribbon (from the decoded `UIFILE_MSPAINT`): Home, View and the contextual
@@ -39,6 +44,9 @@ extension CanvasWindowController {
         controls.textTab = 2
         ribbon.addTab(.init(title: localized("Text"), contextual: true, groups: textGroups()))
         ribbon.setTab(controls.textTab, visible: false)
+        controls.previewTab = 3
+        ribbon.addTab(.init(title: localized("Print Preview"), contextual: false, groups: previewGroups()))
+        ribbon.setTab(controls.previewTab, visible: false)
         return ribbon
     }
 
@@ -67,7 +75,11 @@ extension CanvasWindowController {
         describe(paste, "⌘V", localized("Paste the contents of the Clipboard."))
         describe(cut, "⌘X", localized("Cut the selection and put it on the Clipboard."))
         describe(copy, "⌘C", localized("Copy the selection to the Clipboard."))
-        return RibbonGroup(title: localized("Clipboard"), content: row([paste, column([cut, copy])]))
+        // Collapse orders come from the groups' scaling values in UIFILE_MSPAINT (the high
+        // byte: Clipboard 1, Image 2, Tools 3, Shapes 4 on Home); groups without one keep
+        // their size.
+        return RibbonGroup(title: localized("Clipboard"), content: row([paste, column([cut, copy])]),
+                           icon: RibbonIcons.symbol("doc.on.clipboard", size: 32, color: .systemBrown), collapseOrder: 1)
     }
 
     private func imageGroup() -> NSView {
@@ -90,7 +102,8 @@ extension CanvasWindowController {
         describe(crop, "⇧⌘X", localized("Crop the picture to the selection."))
         describe(resize, "⌥⌘R", localized("Resize and skew the picture or the selection."))
         describe(rotate, nil, localized("Rotate or flip the picture or the selection."))
-        return RibbonGroup(title: localized("Image"), content: row([select, column([crop, resize, rotate])]))
+        return RibbonGroup(title: localized("Image"), content: row([select, column([crop, resize, rotate])]),
+                           icon: RibbonIcons.symbol("photo", size: 32, color: .controlAccentColor), collapseOrder: 2)
     }
 
     private func toolsGroup() -> NSView {
@@ -113,7 +126,8 @@ extension CanvasWindowController {
                 return button
             }, spacing: 2)
         }, spacing: 2)
-        return RibbonGroup(title: localized("Tools"), content: grid)
+        return RibbonGroup(title: localized("Tools"), content: grid,
+                           icon: RibbonIcons.symbol("pencil", size: 32, color: .systemOrange), collapseOrder: 3)
     }
 
     /// Paint's Brushes button has no group caption; its menu is a gallery of the nine brushes.
@@ -150,7 +164,8 @@ extension CanvasWindowController {
         controls.fill = fill
         describe(outline, nil, localized("Choose the outline of shapes, drawn in color 1."))
         describe(fill, nil, localized("Choose the fill of shapes, drawn in color 2."))
-        return RibbonGroup(title: localized("Shapes"), content: row([gallery, column([outline, fill])], spacing: 6))
+        return RibbonGroup(title: localized("Shapes"), content: row([gallery, column([outline, fill])], spacing: 6),
+                           icon: RibbonIcons.shape(.fivePointStar, size: 32), collapseOrder: 4)
     }
 
     private func sizeGroup() -> NSView {
@@ -183,7 +198,8 @@ extension CanvasWindowController {
         controls.color1.append(color1)
         controls.color2.append(color2)
         controls.palettes.append(palette)
-        return RibbonGroup(title: localized("Colors"), content: row([color1, color2, palette, edit], spacing: 4))
+        return RibbonGroup(title: localized("Colors"), content: row([color1, color2, palette, edit], spacing: 4),
+                           icon: RibbonIcons.colorWheel(size: 32))
     }
 
     // MARK: - View
@@ -213,9 +229,55 @@ extension CanvasWindowController {
         rulers.toolTip = localized("Rulers") + " (⌘R)"
         gridlines.toolTip = localized("Gridlines") + " (⌘')"
         return [
-            RibbonGroup(title: localized("Zoom"), content: row([zoomIn, zoomOut, actual])),
-            RibbonGroup(title: localized("Show or hide"), content: column([rulers, gridlines, statusBar], spacing: 4)),
-            RibbonGroup(title: localized("Display"), content: row([fullScreen, thumbnail])),
+            RibbonGroup(title: localized("Zoom"), content: row([zoomIn, zoomOut, actual]),
+                        icon: RibbonIcons.symbol("magnifyingglass", size: 32, color: .controlAccentColor), collapseOrder: 1),
+            RibbonGroup(title: localized("Show or hide"), content: column([rulers, gridlines, statusBar], spacing: 4),
+                        icon: RibbonIcons.symbol("eye", size: 32, color: .controlAccentColor), collapseOrder: 2),
+            RibbonGroup(title: localized("Display"), content: row([fullScreen, thumbnail]),
+                        icon: RibbonIcons.symbol("display", size: 32, color: .controlAccentColor), collapseOrder: 3),
+        ]
+    }
+
+    // MARK: - Print Preview
+
+    /// Paint's Print Preview tab, the only one shown while previewing.
+    private func previewGroups() -> [NSView] {
+        func button(_ title: String, _ symbol: String, _ action: Selector, kind: RibbonButton.Kind = .push) -> RibbonButton {
+            let button = RibbonButton(title: title, image: RibbonIcons.symbol(symbol, size: 32, color: .controlAccentColor), size: .large, kind: kind)
+            button.target = self
+            button.action = action
+            return button
+        }
+        let print = button(localized("Print"), "printer", #selector(printFromPreview(_:)))
+        let setup = button(localized("Page setup"), "doc.text", #selector(pageSetupFromPreview(_:)))
+        let zoomIn = button(localized("Zoom in"), "plus.magnifyingglass", #selector(zoomIn(_:)))
+        let zoomOut = button(localized("Zoom out"), "minus.magnifyingglass", #selector(zoomOut(_:)))
+        let onePage = button(localized("One page"), "doc", #selector(showOnePage(_:)), kind: .toggle)
+        let twoPages = button(localized("Two pages"), "book", #selector(showTwoPages(_:)), kind: .toggle)
+        let previous = button(localized("Previous page"), "chevron.left.square", #selector(previousPreviewPage(_:)))
+        let next = button(localized("Next page"), "chevron.right.square", #selector(nextPreviewPage(_:)))
+        let close = button(localized("Close print preview"), "xmark.rectangle", #selector(togglePrintPreview(_:)))
+        describe(print, "⌘P", localized("Print the current picture."))
+        describe(setup, nil, localized("Change the layout of the picture."))
+        describe(zoomIn, "⌘=", localized("Zoom in on the current picture."))
+        describe(zoomOut, "⌘-", localized("Zoom out on the current picture."))
+        describe(onePage, nil, localized("Zoom the picture so that one page fits in the window."))
+        describe(twoPages, nil, localized("Zoom the picture so that two pages fit in the window."))
+        describe(previous, nil, localized("Go to the previous page in the picture."))
+        describe(next, nil, localized("Go to the next page in the picture."))
+        describe(close, "Esc", localized("Close print preview and return to your picture."))
+        controls.onePage = onePage
+        controls.twoPages = twoPages
+        controls.previousPage = previous
+        controls.nextPage = next
+        return [
+            RibbonGroup(title: localized("Print"), content: row([print, setup]),
+                        icon: RibbonIcons.symbol("printer", size: 32, color: .controlAccentColor)),
+            RibbonGroup(title: localized("Zoom"), content: row([zoomIn, zoomOut, onePage, twoPages]),
+                        icon: RibbonIcons.symbol("magnifyingglass", size: 32, color: .controlAccentColor), collapseOrder: 2),
+            RibbonGroup(title: localized("Preview"), content: row([previous, next]),
+                        icon: RibbonIcons.symbol("doc.on.doc", size: 32, color: .controlAccentColor)),
+            RibbonGroup(title: "", content: close),
         ]
     }
 
@@ -270,8 +332,10 @@ extension CanvasWindowController {
         }
         return [
             clipboardGroup(withPasteFrom: false),
-            RibbonGroup(title: localized("Font"), content: column([row([family, size], spacing: 4), effects], spacing: 6)),
-            RibbonGroup(title: localized("Background"), content: column([opaque, transparent])),
+            RibbonGroup(title: localized("Font"), content: column([row([family, size], spacing: 4), effects], spacing: 6),
+                        icon: RibbonIcons.symbol("textformat", size: 32, color: .controlAccentColor)),
+            RibbonGroup(title: localized("Background"), content: column([opaque, transparent]),
+                        icon: RibbonIcons.symbol("character.textbox", size: 32, color: .controlAccentColor)),
             colorsGroup(),
         ]
     }
@@ -315,7 +379,7 @@ extension CanvasWindowController {
         submenu(localized("Print"), [
             (localized("Print…"), #selector(NSDocument.printDocument(_:))),
             (localized("Page setup…"), #selector(NSDocument.runPageLayout(_:))),
-            (localized("Print preview"), #selector(NSDocument.printDocument(_:))),
+            (localized("Print preview"), #selector(togglePrintPreview(_:))),
         ])
         add(localized("From scanner or camera…"), #selector(AppDelegate.importFromScannerOrCamera(_:)))
         add(localized("Send in email…"), #selector(CanvasDocument.sendInEmail(_:)))
@@ -486,6 +550,7 @@ extension CanvasWindowController {
         controls.strikethrough?.isOn = text.strikethrough
         controls.opaque?.isOn = text.opaque
         controls.transparent?.isOn = !text.opaque
+        syncPreviewControls()
         window?.invalidateCursorRects(for: canvasView)
     }
 

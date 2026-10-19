@@ -19,6 +19,10 @@ final class CanvasWindowController: NSWindowController {
         (self?.document as? CanvasDocument)?.bitmap.makeImage()
     }
     private var fullScreen: FullScreenViewer?
+    /// Paint's print preview, shown in place of the picture.
+    private(set) var preview: PrintPreviewView?
+    private var previewScroll: NSScrollView?
+    private var pendingPrintInfo: NSPrintInfo?
     private var editingColors = false
     private var lastRulerMarks: (CGFloat, CGFloat)?
 
@@ -31,7 +35,8 @@ final class CanvasWindowController: NSWindowController {
             backing: .buffered,
             defer: false
         )
-        window.minSize = NSSize(width: 640, height: 420)
+        // As in Paint, the window can get small; the ribbon collapses and then hides.
+        window.minSize = NSSize(width: 240, height: 200)
         // Restorable through the document controller, so a relaunch after a crash reopens the
         // autosaved pictures (see `DocumentController`).
         window.isRestorable = true
@@ -70,7 +75,10 @@ final class CanvasWindowController: NSWindowController {
             }
         }
         canvasView.onStatusChange = { [weak self] in self?.updateSelectionStatus() }
-        canvasView.onDisplayChange = { [weak self] in self?.thumbnail.setNeedsRefresh() }
+        canvasView.onDisplayChange = { [weak self] in
+            self?.thumbnail.setNeedsRefresh()
+            self?.refreshPrintPreview()
+        }
         statusBar.onZoom = { [weak self] zoom in self?.setZoom(zoom, centeredAt: nil) }
         statusBar.onZoomStep = { [weak self] up in self?.stepZoom(up: up, centeredAt: nil) }
         scrollView.contentView.postsBoundsChangedNotifications = true
@@ -252,10 +260,18 @@ final class CanvasWindowController: NSWindowController {
     // MARK: - Zoom
 
     @objc func zoomIn(_ sender: Any?) {
+        if let preview {
+            preview.zoom = PrintPreviewView.Zoom(rawValue: min(preview.zoom.rawValue + 1, PrintPreviewView.Zoom.allCases.count - 1)) ?? .fit
+            return
+        }
         stepZoom(up: true, centeredAt: nil)
     }
 
     @objc func zoomOut(_ sender: Any?) {
+        if let preview {
+            preview.zoom = PrintPreviewView.Zoom(rawValue: max(preview.zoom.rawValue - 1, 0)) ?? .fit
+            return
+        }
         stepZoom(up: false, centeredAt: nil)
     }
 
@@ -336,10 +352,11 @@ final class CanvasWindowController: NSWindowController {
         syncControls()
     }
 
-    /// Paint shows the thumbnail only while the picture is zoomed in past 100%.
+    /// Paint shows the thumbnail only while the picture is zoomed in past 100%, and not in
+    /// print preview.
     private func updateThumbnail() {
         guard let window else { return }
-        let wanted = thumbnailEnabled && scrollView.magnification > 1.001
+        let wanted = preview == nil && thumbnailEnabled && scrollView.magnification > 1.001
         if wanted, !thumbnail.isVisible {
             thumbnail.show(attachedTo: window)
         } else if !wanted, thumbnail.isVisible {
@@ -358,6 +375,114 @@ final class CanvasWindowController: NSWindowController {
         let viewer = FullScreenViewer(image: image, screen: screen) { [weak self] in self?.fullScreen = nil }
         fullScreen = viewer
         viewer.show()
+    }
+
+    // MARK: - Print preview
+
+    /// Paint's Print Preview (File > Print > Print preview): the pages in place of the picture,
+    /// with only the Print Preview tab on the ribbon. Closing it returns to the picture.
+    @objc func togglePrintPreview(_ sender: Any?) {
+        if preview != nil { closePrintPreview() } else { openPrintPreview() }
+    }
+
+    private var printLayout: PrintLayout {
+        let document = canvasView.document
+        return PrintLayout(pixelWidth: document.bitmap.width, pixelHeight: document.bitmap.height,
+                           dotsPerInch: document.dotsPerInch, info: document.printInfo)
+    }
+
+    private func openPrintPreview() {
+        guard let content = window?.contentView else { return }
+        canvasView.finishInteractions()
+        guard let image = canvasView.document.bitmap.makeImage() else { return }
+        let view = PrintPreviewView(image: image, layout: printLayout)
+        view.onChange = { [weak self] in self?.syncPreviewControls() }
+        view.onClose = { [weak self] in self?.closePrintPreview() }
+        let scroll = NSScrollView()
+        scroll.documentView = view
+        scroll.hasVerticalScroller = true
+        scroll.hasHorizontalScroller = true
+        scroll.backgroundColor = NSColor(white: 0.5, alpha: 1)
+        scroll.translatesAutoresizingMaskIntoConstraints = false
+        content.addSubview(scroll)
+        NSLayoutConstraint.activate([
+            scroll.leadingAnchor.constraint(equalTo: scrollView.leadingAnchor),
+            scroll.trailingAnchor.constraint(equalTo: scrollView.trailingAnchor),
+            scroll.topAnchor.constraint(equalTo: scrollView.topAnchor),
+            scroll.bottomAnchor.constraint(equalTo: scrollView.bottomAnchor),
+        ])
+        content.layoutSubtreeIfNeeded()
+        scrollView.isHidden = true
+        preview = view
+        previewScroll = scroll
+        updateThumbnail()
+        view.updateSize()
+        ribbon.showExclusively(controls.previewTab)
+        window?.makeFirstResponder(view)
+        syncControls()
+    }
+
+    /// Keeps the pages current when the picture changes underneath (Undo from the toolbar).
+    private func refreshPrintPreview() {
+        guard let preview, let image = canvasView.document.bitmap.makeImage() else { return }
+        preview.update(image: image, layout: printLayout)
+    }
+
+    func closePrintPreview() {
+        guard preview != nil else { return }
+        previewScroll?.removeFromSuperview()
+        preview = nil
+        previewScroll = nil
+        scrollView.isHidden = false
+        ribbon.showExclusively(nil)
+        window?.makeFirstResponder(canvasView)
+        updateThumbnail()
+        syncControls()
+    }
+
+    /// As in MFC's preview, Print leaves the preview first.
+    @objc func printFromPreview(_ sender: Any?) {
+        closePrintPreview()
+        canvasView.document.printDocument(sender)
+    }
+
+    @objc func pageSetupFromPreview(_ sender: Any?) {
+        let document = canvasView.document
+        let info = document.printInfo.copy() as! NSPrintInfo
+        pendingPrintInfo = info
+        document.runModalPageLayout(with: info, delegate: self, didRun: #selector(pageLayoutDidRun(_:accepted:contextInfo:)), contextInfo: nil)
+    }
+
+    @objc private func pageLayoutDidRun(_ document: NSDocument, accepted: Bool, contextInfo: UnsafeMutableRawPointer?) {
+        defer { pendingPrintInfo = nil }
+        guard accepted, let info = pendingPrintInfo else { return }
+        document.printInfo = info
+        preview?.update(layout: printLayout)
+    }
+
+    @objc func showOnePage(_ sender: Any?) {
+        preview?.showsTwoPages = false
+        if preview?.zoom != .fit { preview?.zoom = .fit }
+    }
+
+    @objc func showTwoPages(_ sender: Any?) {
+        preview?.showsTwoPages = true
+        if preview?.zoom != .fit { preview?.zoom = .fit }
+    }
+
+    @objc func previousPreviewPage(_ sender: Any?) {
+        preview?.previousPage()
+    }
+
+    @objc func nextPreviewPage(_ sender: Any?) {
+        preview?.nextPage()
+    }
+
+    func syncPreviewControls() {
+        controls.onePage?.isOn = preview?.showsTwoPages == false
+        controls.twoPages?.isOn = preview?.showsTwoPages == true
+        controls.previousPage?.isEnabled = preview?.canGoBack == true
+        controls.nextPage?.isEnabled = preview?.canGoForward == true
     }
 
     // MARK: - Colors
@@ -415,6 +540,8 @@ extension CanvasWindowController: NSMenuItemValidation {
             menuItem.state = statusBar.isHidden ? .off : .on
         case #selector(toggleThumbnail(_:)):
             menuItem.state = thumbnailEnabled ? .on : .off
+        case #selector(togglePrintPreview(_:)):
+            menuItem.state = preview != nil ? .on : .off
         case #selector(toggleTransparentSelection(_:)):
             menuItem.state = state.transparentSelection ? .on : .off
         case #selector(toggleBold(_:)):

@@ -45,6 +45,7 @@ enum MainMenu {
             item(localized("Image Properties…"), #selector(CanvasView.showImageProperties(_:)), "e"),
             .separator(),
             item(localized("Page Setup…"), #selector(NSDocument.runPageLayout(_:)), "p", [.command, .shift]),
+            item(localized("Print Preview"), #selector(CanvasWindowController.togglePrintPreview(_:))),
             item(localized("Print…"), #selector(NSDocument.printDocument(_:)), "p"),
         ]))
 

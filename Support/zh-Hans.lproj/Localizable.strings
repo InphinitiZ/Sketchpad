@@ -312,3 +312,22 @@
 "Take a color from the picture for color 1, or color 2 with the right button." = "从图片中选取颜色作为颜色 1，右键则作为颜色 2。";
 "Zoom in on part of the picture; the right button zooms out." = "放大图片的一部分；右键缩小。";
 "%@ (Recovered)" = "%@ (已恢复)";
+
+/* Print preview (Paint's Print Preview tab, strings 24000–24401 and 36069–36175) */
+"Print Preview" = "打印预览";
+"Page setup" = "页面设置";
+"One page" = "一页";
+"Two pages" = "两页";
+"Preview" = "预览";
+"Previous page" = "上一页";
+"Next page" = "下一页";
+"Close print preview" = "关闭打印预览";
+"Print the current picture." = "打印当前图片。";
+"Change the layout of the picture." = "更改图片布局。";
+"Zoom in on the current picture." = "放大当前图片。";
+"Zoom out on the current picture." = "缩小当前图片。";
+"Zoom the picture so that one page fits in the window." = "将图片缩放到一页，使整个页面适应窗口大小。";
+"Zoom the picture so that two pages fit in the window." = "将图片缩放到两页，使两个页面适应窗口大小。";
+"Go to the previous page in the picture." = "转到图片中的上一页。";
+"Go to the next page in the picture." = "转到图片中的下一页。";
+"Close print preview and return to your picture." = "关闭打印预览并返回到你的图片。";

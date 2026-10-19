@@ -268,32 +268,49 @@ final class RibbonButton: NSControl {
     }
 }
 
-/// A captioned group of controls with a divider on its right, like a ribbon group.
+/// A captioned group of controls with a divider on its right, like a ribbon group. When the
+/// window is too narrow, a group collapses into one large button that opens its controls in a
+/// popover, as the Windows Ribbon does.
 final class RibbonGroup: NSView {
     let title: String
-    private let caption: NSTextField
+    /// When this group collapses as the ribbon narrows: lower first. Groups without an order
+    /// but with an icon collapse after those, right to left; groups with neither never do.
+    let collapseOrder: Int?
+    /// The controls and caption, shown in place or, when collapsed, in the popover.
+    private let expanded = NSView()
+    private var collapsedButton: RibbonButton?
+    private let popover = NSPopover()
+    private(set) var isCollapsed = false
 
-    init(title: String, content: NSView) {
+    init(title: String, content: NSView, icon: NSImage? = nil, collapseOrder: Int? = nil) {
         self.title = title
-        caption = NSTextField(labelWithString: title)
+        self.collapseOrder = collapseOrder
         super.init(frame: .zero)
+        let caption = NSTextField(labelWithString: title)
         caption.font = .systemFont(ofSize: 10.5)
         caption.textColor = .secondaryLabelColor
         caption.alignment = .center
         for view in [content, caption] {
             view.translatesAutoresizingMaskIntoConstraints = false
-            addSubview(view)
+            expanded.addSubview(view)
         }
         NSLayoutConstraint.activate([
-            content.topAnchor.constraint(equalTo: topAnchor, constant: 4),
-            content.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 6),
-            content.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -7),
+            content.topAnchor.constraint(equalTo: expanded.topAnchor, constant: 4),
+            content.leadingAnchor.constraint(equalTo: expanded.leadingAnchor, constant: 6),
+            content.trailingAnchor.constraint(equalTo: expanded.trailingAnchor, constant: -7),
             content.bottomAnchor.constraint(lessThanOrEqualTo: caption.topAnchor, constant: -2),
-            caption.leadingAnchor.constraint(equalTo: leadingAnchor),
-            caption.trailingAnchor.constraint(equalTo: trailingAnchor),
-            caption.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -2),
-            caption.widthAnchor.constraint(lessThanOrEqualTo: widthAnchor),
+            caption.leadingAnchor.constraint(equalTo: expanded.leadingAnchor),
+            caption.trailingAnchor.constraint(equalTo: expanded.trailingAnchor),
+            caption.bottomAnchor.constraint(equalTo: expanded.bottomAnchor, constant: -2),
+            caption.widthAnchor.constraint(lessThanOrEqualTo: expanded.widthAnchor),
         ])
+        if collapseOrder != nil || icon != nil {
+            let button = RibbonButton(title: title, image: icon, size: .large, kind: .push) { [weak self] in self?.showPopover() }
+            button.setAccessibilityRole(.menuButton)
+            collapsedButton = button
+            popover.behavior = .transient
+        }
+        show(expanded)
         setAccessibilityElement(true)
         setAccessibilityRole(.group)
         setAccessibilityLabel(title)
@@ -303,6 +320,47 @@ final class RibbonGroup: NSView {
         fatalError("init(coder:) is not supported")
     }
 
+    /// The group's width when shown in full, and when collapsed.
+    private(set) lazy var expandedWidth: CGFloat = expanded.fittingSize.width
+    var collapsedWidth: CGFloat { collapsedButton.map { $0.intrinsicContentSize.width + 13 } ?? expandedWidth }
+
+    func setCollapsed(_ collapsed: Bool) {
+        guard collapsed != isCollapsed, let button = collapsedButton else { return }
+        _ = expandedWidth
+        isCollapsed = collapsed
+        popover.close()
+        show(collapsed ? button : expanded)
+    }
+
+    private func show(_ view: NSView) {
+        subviews.forEach { $0.removeFromSuperview() }
+        view.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(view)
+        let inset: CGFloat = view === expanded ? 0 : 6
+        NSLayoutConstraint.activate([
+            view.topAnchor.constraint(equalTo: topAnchor, constant: view === expanded ? 0 : 4),
+            view.leadingAnchor.constraint(equalTo: leadingAnchor, constant: inset),
+            view.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -inset - 1),
+            view === expanded ? view.bottomAnchor.constraint(equalTo: bottomAnchor) : view.bottomAnchor.constraint(lessThanOrEqualTo: bottomAnchor),
+        ])
+    }
+
+    /// The collapsed group's controls, below its button.
+    func showPopover() {
+        guard isCollapsed, let button = collapsedButton else { return }
+        let controller = NSViewController()
+        expanded.removeFromSuperview()
+        expanded.translatesAutoresizingMaskIntoConstraints = true
+        expanded.frame = NSRect(origin: .zero, size: expanded.fittingSize)
+        controller.view = expanded
+        popover.contentViewController = controller
+        popover.show(relativeTo: button.bounds, of: button, preferredEdge: .maxY)
+    }
+
+    var isShowingPopover: Bool { popover.isShown }
+
+    var canCollapse: Bool { collapsedButton != nil }
+
     override func draw(_ dirtyRect: NSRect) {
         NSColor.separatorColor.setFill()
         NSRect(x: bounds.maxX - 1, y: 6, width: 1, height: bounds.height - 12).fill()
@@ -310,6 +368,9 @@ final class RibbonGroup: NSView {
 }
 
 /// The ribbon: a row of tabs (with the File button first) over the selected tab's groups.
+/// As the window narrows, groups collapse in their tab's order; when even that does not fit,
+/// or the window is very small, the ribbon hides, like the Windows Ribbon (which hides below
+/// 300 × 250 pixels).
 final class RibbonView: NSView {
     struct Tab {
         let title: String
@@ -318,12 +379,21 @@ final class RibbonView: NSView {
         let groups: [NSView]
     }
 
+    static let minimumWidth: CGFloat = 300
+    static let minimumHeight: CGFloat = 250
+
     private let tabBar = NSStackView()
     private let band = NSStackView()
     private var tabs: [Tab] = []
     private var tabButtons: [NSButton] = []
     private(set) var selectedIndex = 0
     private var hiddenTabs = Set<Int>()
+    /// While set, only this tab shows (Paint's print preview).
+    private var exclusiveTab: Int?
+    private var tabBarHeight: NSLayoutConstraint!
+    private var bandHeight: NSLayoutConstraint!
+    /// The ribbon is hidden because the window is too small for it.
+    private(set) var isHiddenForSize = false
 
     init(fileMenu: @escaping () -> NSMenu) {
         super.init(frame: .zero)
@@ -336,18 +406,21 @@ final class RibbonView: NSView {
         band.spacing = 0
         band.edgeInsets = NSEdgeInsets(top: 0, left: 4, bottom: 0, right: 4)
         band.setHuggingPriority(.defaultLow, for: .horizontal)
+        band.setClippingResistancePriority(.defaultLow, for: .horizontal)
         for view in [tabBar, band] {
             view.translatesAutoresizingMaskIntoConstraints = false
             addSubview(view)
         }
+        tabBarHeight = tabBar.heightAnchor.constraint(equalToConstant: 24)
+        bandHeight = band.heightAnchor.constraint(equalToConstant: 94)
         NSLayoutConstraint.activate([
             tabBar.topAnchor.constraint(equalTo: topAnchor, constant: 2),
             tabBar.leadingAnchor.constraint(equalTo: leadingAnchor),
-            tabBar.heightAnchor.constraint(equalToConstant: 24),
+            tabBarHeight,
             band.topAnchor.constraint(equalTo: tabBar.bottomAnchor, constant: 2),
             band.leadingAnchor.constraint(equalTo: leadingAnchor),
             band.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor),
-            band.heightAnchor.constraint(equalToConstant: 94),
+            bandHeight,
             band.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -1),
         ])
         setAccessibilityElement(true)
@@ -376,14 +449,33 @@ final class RibbonView: NSView {
     /// Shows or hides a contextual tab, selecting it when it appears (as Paint does for Text).
     func setTab(_ index: Int, visible: Bool) {
         guard tabs.indices.contains(index) else { return }
-        let wasHidden = hiddenTabs.contains(index) || tabButtons[index].isHidden
-        tabButtons[index].isHidden = !visible
-        if visible {
-            hiddenTabs.remove(index)
-            if wasHidden { select(index) }
-        } else {
-            hiddenTabs.insert(index)
-            if selectedIndex == index { select(0) }
+        let wasHidden = hiddenTabs.contains(index)
+        if visible { hiddenTabs.remove(index) } else { hiddenTabs.insert(index) }
+        updateTabButtons()
+        guard exclusiveTab == nil else { return }
+        if visible, wasHidden {
+            select(index)
+        } else if !visible, selectedIndex == index {
+            select(0)
+        }
+    }
+
+    /// Shows only `index` (Paint's Print Preview tab replaces the others), or, with `nil`, all
+    /// tabs again.
+    func showExclusively(_ index: Int?) {
+        let previous = exclusiveTab
+        exclusiveTab = index
+        updateTabButtons()
+        if let index {
+            select(index)
+        } else if let previous, selectedIndex == previous {
+            select(0)
+        }
+    }
+
+    private func updateTabButtons() {
+        for (i, button) in tabButtons.enumerated() {
+            button.isHidden = exclusiveTab.map { $0 != i } ?? hiddenTabs.contains(i)
         }
     }
 
@@ -393,12 +485,65 @@ final class RibbonView: NSView {
         for (i, button) in tabButtons.enumerated() { button.state = i == index ? .on : .off }
         band.arrangedSubviews.forEach { $0.removeFromSuperview() }
         for group in tabs[index].groups { band.addArrangedSubview(group) }
+        lastFit = nil
+        needsLayout = true
     }
 
     var selectedTitle: String { tabs[selectedIndex].title }
 
+    var visibleGroups: [RibbonGroup] { tabs[selectedIndex].groups.compactMap { $0 as? RibbonGroup } }
+
     @objc private func tabClicked(_ sender: NSButton) {
         select(sender.tag)
+    }
+
+    // MARK: - Narrow windows
+
+    private var lastFit: NSSize?
+
+    override func layout() {
+        super.layout()
+        let size = NSSize(width: bounds.width, height: window?.contentView?.bounds.height ?? bounds.height)
+        guard size != lastFit else { return }
+        lastFit = size
+        fit(width: size.width, windowHeight: size.height)
+    }
+
+    /// The order groups collapse in: the tab's scaling order, then the remaining groups that
+    /// can collapse from right to left (the Windows Ribbon's default).
+    var collapseOrder: [RibbonGroup] {
+        let groups = tabs[selectedIndex].groups.compactMap { $0 as? RibbonGroup }.filter(\.canCollapse)
+        let ordered = groups.filter { $0.collapseOrder != nil }.sorted { $0.collapseOrder! < $1.collapseOrder! }
+        return ordered + groups.filter { $0.collapseOrder == nil }.reversed()
+    }
+
+    /// Collapses as few groups as it takes to fit `width`, in `collapseOrder`, or hides the
+    /// ribbon when nothing fits.
+    func fit(width: CGFloat, windowHeight: CGFloat = .greatestFiniteMagnitude) {
+        let groups = tabs[selectedIndex].groups
+        let order = collapseOrder
+        let insets = band.edgeInsets.left + band.edgeInsets.right
+        func neededWidth(collapsing count: Int) -> CGFloat {
+            let collapsed = Set(order.prefix(count).map(ObjectIdentifier.init))
+            return groups.reduce(insets) { total, view in
+                guard let group = view as? RibbonGroup else { return total + view.fittingSize.width }
+                return total + (collapsed.contains(ObjectIdentifier(group)) ? group.collapsedWidth : group.expandedWidth)
+            }
+        }
+        let fitting = (0...order.count).first { neededWidth(collapsing: $0) <= width }
+        let tooSmall = width < Self.minimumWidth || windowHeight < Self.minimumHeight || fitting == nil
+        setHiddenForSize(tooSmall)
+        let count = fitting ?? order.count
+        for (index, group) in order.enumerated() { group.setCollapsed(index < count) }
+    }
+
+    private func setHiddenForSize(_ hidden: Bool) {
+        guard hidden != isHiddenForSize else { return }
+        isHiddenForSize = hidden
+        tabBar.isHidden = hidden
+        band.isHidden = hidden
+        tabBarHeight.constant = hidden ? 0 : 24
+        bandHeight.constant = hidden ? 0 : 94
     }
 
     override func draw(_ dirtyRect: NSRect) {

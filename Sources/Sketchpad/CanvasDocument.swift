@@ -179,6 +179,10 @@ final class CanvasDocument: NSDocument {
         guard let image = bitmap.makeImage() else { throw CocoaError(.fileWriteUnknown) }
         let info = printInfo.copy() as! NSPrintInfo
         info.dictionary().addEntries(from: printSettings)
+        // Paint prints a picture larger than the page across as many pages as it takes, both
+        // ways (AppKit clips the width by default).
+        info.horizontalPagination = .automatic
+        info.verticalPagination = .automatic
         let view = PrintView(image: image, dotsPerInch: dotsPerInch)
         if let scale = PageSetupAccessory.fitScale(for: view.frame.size, info: info) {
             info.scalingFactor = scale

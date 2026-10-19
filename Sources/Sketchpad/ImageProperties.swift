@@ -228,11 +228,18 @@ final class PageSetupAccessory: NSViewController, NSPrintPanelAccessorizing {
         return wide > 0 && tall > 0 ? (wide, tall) : nil
     }
 
-    /// The scale that makes a picture of `size` points span the Fit To pages.
+    /// The scale that makes a picture of `size` points span the Fit To pages: their area inside
+    /// the margins, which is what each printed page shows.
     static func fitScale(for size: NSSize, info: NSPrintInfo) -> CGFloat? {
         guard let pages = fitPages(of: info), size.width > 0, size.height > 0 else { return nil }
-        let page = info.imageablePageBounds.size
+        let page = printableSize(of: info)
         return min(page.width * CGFloat(pages.wide) / size.width, page.height * CGFloat(pages.tall) / size.height)
+    }
+
+    /// The paper inside the margins.
+    static func printableSize(of info: NSPrintInfo) -> NSSize {
+        NSSize(width: max(1, info.paperSize.width - info.leftMargin - info.rightMargin),
+               height: max(1, info.paperSize.height - info.topMargin - info.bottomMargin))
     }
 
     func localizedSummaryItems() -> [[NSPrintPanel.AccessorySummaryKey: String]] { [] }
