@@ -5,23 +5,23 @@ import PaintCore
 /// whole picture otherwise.
 extension CanvasView {
     @objc func rotateRight(_ sender: Any?) {
-        applyTransforms([.rotate(.clockwise)], actionName: "Rotate")
+        applyTransforms([.rotate(.clockwise)], actionName: localized("Rotate"))
     }
 
     @objc func rotateLeft(_ sender: Any?) {
-        applyTransforms([.rotate(.counterclockwise)], actionName: "Rotate")
+        applyTransforms([.rotate(.counterclockwise)], actionName: localized("Rotate"))
     }
 
     @objc func rotateHalfTurn(_ sender: Any?) {
-        applyTransforms([.rotate(.halfTurn)], actionName: "Rotate")
+        applyTransforms([.rotate(.halfTurn)], actionName: localized("Rotate"))
     }
 
     @objc func flipHorizontal(_ sender: Any?) {
-        applyTransforms([.flipHorizontal], actionName: "Flip")
+        applyTransforms([.flipHorizontal], actionName: localized("Flip"))
     }
 
     @objc func flipVertical(_ sender: Any?) {
-        applyTransforms([.flipVertical], actionName: "Flip")
+        applyTransforms([.flipVertical], actionName: localized("Flip"))
     }
 
     /// Paint's Resize and Skew dialog (Ctrl+W there; ⌘W is Close on the Mac).
@@ -30,7 +30,7 @@ extension CanvasView {
         commitText()
         let size = selection?.mask.rect ?? document.bitmap.bounds
         ResizeSkewForm.run(width: size.width, height: size.height, on: window) { [weak self] result in
-            self?.applyTransforms(result.transforms(from: size.width, size.height), actionName: "Resize and Skew")
+            self?.applyTransforms(result.transforms(from: size.width, size.height), actionName: localized("Resize and Skew"))
         }
     }
 
@@ -54,7 +54,7 @@ extension CanvasView {
             grid = grid.blackAndWhite()
         }
         guard grid != original else { return }
-        document.replaceBitmap(Bitmap(grid: grid), actionName: "Image Properties")
+        document.replaceBitmap(Bitmap(grid: grid), actionName: localized("Image Properties"))
     }
 
     /// Applies `transforms` in order as one undo step. Uncovered areas are filled with color 2.
@@ -102,10 +102,10 @@ final class ResizeSkewForm: NSObject, NSTextFieldDelegate {
 
     let originalWidth: Int
     let originalHeight: Int
-    let unitControl = NSSegmentedControl(labels: ["Percentage", "Pixels"], trackingMode: .selectOne, target: nil, action: nil)
+    let unitControl = NSSegmentedControl(labels: [localized("Percentage"), localized("Pixels")], trackingMode: .selectOne, target: nil, action: nil)
     let horizontalField = NSTextField(string: "100")
     let verticalField = NSTextField(string: "100")
-    let keepRatioCheckbox = NSButton(checkboxWithTitle: "Maintain aspect ratio", target: nil, action: nil)
+    let keepRatioCheckbox = NSButton(checkboxWithTitle: localized("Maintain aspect ratio"), target: nil, action: nil)
     let skewHorizontalField = NSTextField(string: "0")
     let skewVerticalField = NSTextField(string: "0")
     private(set) var view = NSView()
@@ -125,13 +125,13 @@ final class ResizeSkewForm: NSObject, NSTextFieldDelegate {
         }
 
         let grid = NSGridView(views: [
-            [label("Resize", bold: true), unitControl],
-            [label("Horizontal:"), horizontalField],
-            [label("Vertical:"), verticalField],
+            [label(localized("Resize"), bold: true), unitControl],
+            [label(localized("Horizontal:")), horizontalField],
+            [label(localized("Vertical:")), verticalField],
             [NSGridCell.emptyContentView, keepRatioCheckbox],
-            [label("Skew (degrees)", bold: true), NSGridCell.emptyContentView],
-            [label("Horizontal:"), skewHorizontalField],
-            [label("Vertical:"), skewVerticalField],
+            [label(localized("Skew (degrees)"), bold: true), NSGridCell.emptyContentView],
+            [label(localized("Horizontal:")), skewHorizontalField],
+            [label(localized("Vertical:")), skewVerticalField],
         ])
         grid.rowSpacing = 8
         grid.columnSpacing = 10
@@ -167,10 +167,10 @@ final class ResizeSkewForm: NSObject, NSTextFieldDelegate {
     static func run(width: Int, height: Int, on window: NSWindow, completion: @escaping (Result) -> Void) {
         let form = ResizeSkewForm(width: width, height: height)
         let alert = NSAlert()
-        alert.messageText = "Resize and Skew"
+        alert.messageText = localized("Resize and Skew")
         alert.accessoryView = form.view
-        alert.addButton(withTitle: "OK")
-        alert.addButton(withTitle: "Cancel")
+        alert.addButton(withTitle: localized("OK"))
+        alert.addButton(withTitle: localized("Cancel"))
         alert.beginSheetModal(for: window) { response in
             if response == .alertFirstButtonReturn { completion(form.result) }
         }

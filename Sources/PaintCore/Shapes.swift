@@ -24,12 +24,27 @@ public struct ShapeStyle: Sendable {
     /// On by default: `CDrawShapeOperation`'s constructor sets its antialias flag, so Paint's
     /// shapes have smooth edges even though its pencil does not.
     public var antialiased: Bool
+    /// A textured outline or fill (Paint's Crayon, Marker, Oil, Natural pencil and Watercolor
+    /// choices); `nil` is "Solid color". Marker fills, marker outlines and outlines under 4 px
+    /// are drawn solid, as in Paint.
+    public var outlineMedium: Medium?
+    public var fillMedium: Medium?
 
-    public init(outline: RGBA?, fill: RGBA? = nil, lineWidth: Int = 1, antialiased: Bool = true) {
+    public init(
+        outline: RGBA?, fill: RGBA? = nil, lineWidth: Int = 1, antialiased: Bool = true,
+        outlineMedium: Medium? = nil, fillMedium: Medium? = nil
+    ) {
         self.outline = outline
         self.fill = fill
         self.lineWidth = lineWidth
         self.antialiased = antialiased
+        self.outlineMedium = outlineMedium
+        self.fillMedium = fillMedium
+    }
+
+    /// The same outline without any fill, for lines, curves and open polygons.
+    var outlineOnly: ShapeStyle {
+        ShapeStyle(outline: outline, lineWidth: lineWidth, antialiased: antialiased, outlineMedium: outlineMedium)
     }
 }
 
@@ -53,7 +68,8 @@ extension Bitmap {
         guard inner.width > 0, inner.height > 0, let path = ShapeGeometry.path(for: kind, in: inner) else {
             // Box thinner than the outline: all of it is outline.
             guard let outline = style.outline, let whole = ShapeGeometry.path(for: kind, in: box) else { return .zero }
-            return render(whole, style: ShapeStyle(outline: nil, fill: outline, antialiased: style.antialiased), closed: true)
+            let filled = ShapeStyle(outline: nil, fill: outline, antialiased: style.antialiased, fillMedium: style.outlineMedium)
+            return render(whole, style: filled, closed: true)
         }
         return render(path, style: style, closed: true, miterJoins: kind == .rectangle)
     }
@@ -64,7 +80,7 @@ extension Bitmap {
         let path = CGMutablePath()
         path.move(to: center(a))
         path.addCurve(to: center(b), control1: center(control1), control2: center(control2))
-        return render(path, style: ShapeStyle(outline: style.outline, lineWidth: style.lineWidth, antialiased: style.antialiased), closed: false)
+        return render(path, style: style.outlineOnly, closed: false)
     }
 
     /// Paint's polygon: connected vertices, filled once `closed`.
@@ -75,7 +91,7 @@ extension Bitmap {
         path.move(to: center(first))
         for p in points.dropFirst() { path.addLine(to: center(p)) }
         if closed { path.closeSubpath() }
-        return render(path, style: closed ? style : ShapeStyle(outline: style.outline, lineWidth: style.lineWidth, antialiased: style.antialiased), closed: closed)
+        return render(path, style: closed ? style : style.outlineOnly, closed: closed)
     }
 
     private func center(_ p: PixelPoint) -> CGPoint {
@@ -85,6 +101,14 @@ extension Bitmap {
     /// Fills then strokes `path`. Returns the area it may have touched.
     private func render(_ path: CGPath, style: ShapeStyle, closed: Bool, miterJoins: Bool = false) -> PixelRect {
         let lineWidth = CGFloat(max(1, style.lineWidth))
+        let reach = path.boundingBoxOfPath.insetBy(dx: -lineWidth - 1, dy: -lineWidth - 1)
+        let area = PixelRect(
+            x: Int(reach.minX.rounded(.down)),
+            y: Int(reach.minY.rounded(.down)),
+            width: Int(reach.width.rounded(.up)) + 1,
+            height: Int(reach.height.rounded(.up)) + 1
+        ).intersection(self.bounds)
+
         context.saveGState()
         defer { context.restoreGState() }
         context.setShouldAntialias(style.antialiased)
@@ -93,23 +117,31 @@ extension Bitmap {
         context.setLineJoin(miterJoins ? .miter : .round)
 
         if closed, let fill = style.fill {
-            context.setFillColor(fill.cgColor)
-            context.addPath(path)
-            context.fillPath()
+            if let medium = style.fillMedium, medium.texturesFill {
+                let layer = MediumLayer(medium: medium, color: fill, limit: area, seed: 1)
+                composite(layer, in: layer.addFill(path, origin: path.boundingBoxOfPath.origin))
+            } else {
+                context.setFillColor(fill.cgColor)
+                context.addPath(path)
+                context.fillPath()
+            }
         }
         if let outline = style.outline {
-            context.setStrokeColor(outline.cgColor)
-            context.addPath(path)
-            context.strokePath()
+            if let medium = style.outlineMedium, medium.texturesOutline(width: style.lineWidth) {
+                // Paint flattens the path and runs it through the brush engine.
+                let layer = MediumLayer(medium: medium, color: outline, limit: area, seed: 2)
+                var touched = PixelRect.zero
+                for run in path.polylines() {
+                    touched = touched.union(layer.addPolyline(run, width: Double(lineWidth)))
+                }
+                composite(layer, in: touched)
+            } else {
+                context.setStrokeColor(outline.cgColor)
+                context.addPath(path)
+                context.strokePath()
+            }
         }
-
-        let bounds = path.boundingBoxOfPath.insetBy(dx: -lineWidth - 1, dy: -lineWidth - 1)
-        return PixelRect(
-            x: Int(bounds.minX.rounded(.down)),
-            y: Int(bounds.minY.rounded(.down)),
-            width: Int(bounds.width.rounded(.up)) + 1,
-            height: Int(bounds.height.rounded(.up)) + 1
-        ).intersection(self.bounds)
+        return area
     }
 }
 

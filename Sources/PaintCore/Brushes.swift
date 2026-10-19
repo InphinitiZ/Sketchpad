@@ -1,6 +1,6 @@
 import CoreGraphics
 
-/// The brushes without textures (the textured ones are PGS skeletal strokes, not done yet).
+/// Paint's brush gallery, in its order.
 public enum BrushKind: CaseIterable, Sendable {
     case normal
     /// Nib slanted like "/" (Paint's "Calligraphy brush 1", 45°).
@@ -8,6 +8,19 @@ public enum BrushKind: CaseIterable, Sendable {
     /// Nib slanted like "\" (Paint's "Calligraphy brush 2", 135°).
     case calligraphy135
     case airbrush
+    case oil, crayon, marker, naturalPencil, watercolor
+
+    /// The textured brushes' medium; `nil` for the plain ones.
+    public var medium: Medium? {
+        switch self {
+        case .oil: .oil
+        case .crayon: .crayon
+        case .marker: .marker
+        case .naturalPencil: .naturalPencil
+        case .watercolor: .watercolor
+        case .normal, .calligraphy45, .calligraphy135, .airbrush: nil
+        }
+    }
 }
 
 public enum Airbrush {

@@ -23,21 +23,30 @@ extension CanvasView: NSMenuItemValidation {
 
     @objc func cut(_ sender: Any?) {
         copy(sender)
-        selectionActionName = "Cut"
+        selectionActionName = localized("Cut")
         delete(sender)
     }
 
     @objc func delete(_ sender: Any?) {
         guard let selection else { return }
         bitmapDidChange(selection.erase(background: state.secondary))
-        if selectionActionName == "Move Selection" { selectionActionName = "Delete" }
+        if selectionActionName == localized("Move Selection") { selectionActionName = localized("Delete") }
         commitSelection()
+    }
+
+    /// The image types the canvas reads from the pasteboard, best first.
+    static let imageTypes: [NSPasteboard.PasteboardType] = [.png, .tiff, NSPasteboard.PasteboardType(UTType.jpeg.identifier)]
+
+    @objc func paste(_ sender: Any?) {
+        paste(from: .general)
     }
 
     /// Pastes at the top-left of the visible canvas, growing the canvas if the image is larger,
     /// and leaves the pasted pixels selected so they can be moved (Paint's behavior).
-    @objc func paste(_ sender: Any?) {
-        guard let image = Self.pasteboardImage() else { return }
+    /// Returns false if `pasteboard` holds no image.
+    @discardableResult
+    func paste(from pasteboard: NSPasteboard) -> Bool {
+        guard let image = Self.image(on: pasteboard) else { return false }
         finishInteractions()
         state.tool = .select
 
@@ -51,7 +60,7 @@ extension CanvasView: NSMenuItemValidation {
                 fill: state.secondary
             )
             larger.stamp(bitmap.copyPixels(), mask: SelectionMask(rect: bitmap.bounds), skipping: nil)
-            document.replaceBitmap(larger, actionName: "Paste")
+            document.replaceBitmap(larger, actionName: localized("Paste"))
             bitmap = larger
             origin = PixelPoint(x: 0, y: 0)
         }
@@ -64,8 +73,9 @@ extension CanvasView: NSMenuItemValidation {
             at: origin,
             transparent: state.selectionTransparentColor
         )
-        selectionActionName = "Paste"
+        selectionActionName = localized("Paste")
         bitmapDidChange(nil)
+        return true
     }
 
     @objc override func selectAll(_ sender: Any?) {
@@ -80,7 +90,7 @@ extension CanvasView: NSMenuItemValidation {
         let rect = selection.mask.rect
         let pixels = selection.selectedPixels(outside: state.secondary)
         commitSelection()
-        document.replaceBitmap(Bitmap(width: rect.width, height: rect.height, pixels: pixels), actionName: "Crop")
+        document.replaceBitmap(Bitmap(width: rect.width, height: rect.height, pixels: pixels), actionName: localized("Crop"))
     }
 
     /// Undo first commits a moved selection, then undoes it: both land in the same undo group,
@@ -103,26 +113,38 @@ extension CanvasView: NSMenuItemValidation {
         case #selector(copy(_:)), #selector(cut(_:)), #selector(delete(_:)), #selector(crop(_:)):
             return selection != nil
         case #selector(paste(_:)):
-            return NSPasteboard.general.availableType(from: [.png, .tiff]) != nil
+            return NSPasteboard.general.availableType(from: Self.imageTypes) != nil
         case #selector(undo(_:)):
-            menuItem.title = undoManager?.undoMenuItemTitle ?? "Undo"
+            menuItem.title = undoManager?.undoMenuItemTitle ?? localized("Undo")
             return undoManager?.canUndo == true || selection?.dirty.isEmpty == false
         case #selector(redo(_:)):
-            menuItem.title = undoManager?.redoMenuItemTitle ?? "Redo"
+            menuItem.title = undoManager?.redoMenuItemTitle ?? localized("Redo")
             return undoManager?.canRedo == true
         default:
             return true
         }
     }
 
-    /// The first image on the general pasteboard, at its full pixel size.
-    private static func pasteboardImage() -> CGImage? {
-        let pasteboard = NSPasteboard.general
-        for type in [NSPasteboard.PasteboardType.png, .tiff] {
+    /// The first image on `pasteboard`, at its full pixel size.
+    private static func image(on pasteboard: NSPasteboard) -> CGImage? {
+        for type in imageTypes {
             if let data = pasteboard.data(forType: type), let image = ImageCodec.decode(data) {
                 return image
             }
         }
         return nil
+    }
+}
+
+/// Continuity Camera (File > Import from iPhone or iPad) delivers its photo or scan through the
+/// Services mechanism; it arrives like a paste.
+extension CanvasView: NSServicesMenuRequestor {
+    override func validRequestor(forSendType sendType: NSPasteboard.PasteboardType?, returnType: NSPasteboard.PasteboardType?) -> Any? {
+        if sendType == nil, let returnType, Self.imageTypes.contains(returnType) { return self }
+        return super.validRequestor(forSendType: sendType, returnType: returnType)
+    }
+
+    func readSelection(from pasteboard: NSPasteboard) -> Bool {
+        paste(from: pasteboard)
     }
 }

@@ -6,16 +6,16 @@ enum Tool: Int, CaseIterable {
 
     var title: String {
         switch self {
-        case .select: "Rectangular Selection"
-        case .freeFormSelect: "Free-form Selection"
-        case .text: "Text"
-        case .pencil: "Pencil"
-        case .brush: "Brushes"
-        case .eraser: "Eraser"
-        case .fill: "Fill with Color"
-        case .picker: "Color Picker"
-        case .magnifier: "Magnifier"
-        case .shape: "Shapes"
+        case .select: localized("Rectangular Selection")
+        case .freeFormSelect: localized("Free-form Selection")
+        case .text: localized("Text")
+        case .pencil: localized("Pencil")
+        case .brush: localized("Brushes")
+        case .eraser: localized("Eraser")
+        case .fill: localized("Fill with Color")
+        case .picker: localized("Color Picker")
+        case .magnifier: localized("Magnifier")
+        case .shape: localized("Shapes")
         }
     }
 
@@ -54,29 +54,29 @@ enum Tool: Int, CaseIterable {
 extension ShapeKind {
     var title: String {
         switch self {
-        case .line: "Line"
-        case .curve: "Curve"
-        case .oval: "Oval"
-        case .rectangle: "Rectangle"
-        case .roundedRectangle: "Rounded Rectangle"
-        case .polygon: "Polygon"
-        case .triangle: "Triangle"
-        case .rightTriangle: "Right Triangle"
-        case .diamond: "Diamond"
-        case .pentagon: "Pentagon"
-        case .hexagon: "Hexagon"
-        case .rightArrow: "Right Arrow"
-        case .leftArrow: "Left Arrow"
-        case .upArrow: "Up Arrow"
-        case .downArrow: "Down Arrow"
-        case .fourPointStar: "Four-point Star"
-        case .fivePointStar: "Five-point Star"
-        case .sixPointStar: "Six-point Star"
-        case .roundedRectangleCallout: "Rounded Rectangular Callout"
-        case .ovalCallout: "Oval Callout"
-        case .cloudCallout: "Cloud Callout"
-        case .heart: "Heart"
-        case .lightning: "Lightning"
+        case .line: localized("Line")
+        case .curve: localized("Curve")
+        case .oval: localized("Oval")
+        case .rectangle: localized("Rectangle")
+        case .roundedRectangle: localized("Rounded Rectangle")
+        case .polygon: localized("Polygon")
+        case .triangle: localized("Triangle")
+        case .rightTriangle: localized("Right Triangle")
+        case .diamond: localized("Diamond")
+        case .pentagon: localized("Pentagon")
+        case .hexagon: localized("Hexagon")
+        case .rightArrow: localized("Right Arrow")
+        case .leftArrow: localized("Left Arrow")
+        case .upArrow: localized("Up Arrow")
+        case .downArrow: localized("Down Arrow")
+        case .fourPointStar: localized("Four-point Star")
+        case .fivePointStar: localized("Five-point Star")
+        case .sixPointStar: localized("Six-point Star")
+        case .roundedRectangleCallout: localized("Rounded Rectangular Callout")
+        case .ovalCallout: localized("Oval Callout")
+        case .cloudCallout: localized("Cloud Callout")
+        case .heart: localized("Heart")
+        case .lightning: localized("Lightning")
         }
     }
 }
@@ -84,10 +84,71 @@ extension ShapeKind {
 extension BrushKind {
     var title: String {
         switch self {
-        case .normal: "Brush"
-        case .calligraphy45: "Calligraphy Brush 1"
-        case .calligraphy135: "Calligraphy Brush 2"
-        case .airbrush: "Airbrush"
+        case .normal: localized("Brush")
+        case .calligraphy45: localized("Calligraphy Brush 1")
+        case .calligraphy135: localized("Calligraphy Brush 2")
+        case .airbrush: localized("Airbrush")
+        case .oil: localized("Oil Brush")
+        case .crayon: localized("Crayon")
+        case .marker: localized("Marker")
+        case .naturalPencil: localized("Natural Pencil")
+        case .watercolor: localized("Watercolor Brush")
+        }
+    }
+
+    /// Paint's Size gallery for the brush, in pixels (`CPBApp::AddTools`).
+    var sizes: [Int] {
+        switch self {
+        case .normal: [1, 3, 5, 8]
+        case .calligraphy45, .calligraphy135: [3, 5, 8, 10]
+        case .airbrush: [4, 8, 16, 24]
+        case .naturalPencil: [4, 6, 8, 10]
+        case .oil, .crayon, .marker, .watercolor: [8, 16, 30, 40]
+        }
+    }
+
+    /// The size the brush starts with (`CPBApp::InitializeAttributes`).
+    var defaultSize: Int {
+        switch self {
+        case .normal: 3
+        case .calligraphy45, .calligraphy135: 5
+        case .airbrush: 8
+        case .naturalPencil: 4
+        case .oil, .crayon, .marker, .watercolor: 30
+        }
+    }
+
+    /// Where the chosen size is kept; both calligraphy brushes share one setting, as in Paint.
+    fileprivate var sizeKey: String {
+        self == .calligraphy45 || self == .calligraphy135 ? "brush.calligraphy" : "brush.\(self)"
+    }
+}
+
+/// A choice in Paint's Outline or Fill gallery.
+enum ShapePaint: CaseIterable {
+    case none, solid, crayon, marker, oil, naturalPencil, watercolor
+
+    /// The texture, or `nil` for none and solid color.
+    var medium: Medium? {
+        switch self {
+        case .none, .solid: nil
+        case .crayon: .crayon
+        case .marker: .marker
+        case .oil: .oil
+        case .naturalPencil: .naturalPencil
+        case .watercolor: .watercolor
+        }
+    }
+
+    func title(forOutline outline: Bool) -> String {
+        switch self {
+        case .none: outline ? localized("No outline") : localized("No fill")
+        case .solid: localized("Solid color")
+        case .crayon: localized("Crayon")
+        case .marker: localized("Marker")
+        case .oil: localized("Oil")
+        case .naturalPencil: localized("Natural pencil")
+        case .watercolor: localized("Watercolor")
         }
     }
 }
@@ -131,10 +192,10 @@ final class EditorState {
     var primary: RGBA = .black { didSet { notify() } }
     var secondary: RGBA = .white { didSet { notify() } }
     var shapeKind: ShapeKind = .line { didSet { notify() } }
-    /// Paint's Outline gallery, reduced to "No outline" and "Solid color" until textures exist.
-    var shapeOutline = true { didSet { notify() } }
-    /// Paint's Fill gallery: "No fill" or "Solid color" (color 2).
-    var shapeFill = false { didSet { notify() } }
+    /// Paint's Outline gallery (drawn in color 1).
+    var shapeOutline = ShapePaint.solid { didSet { notify() } }
+    /// Paint's Fill gallery (drawn in color 2).
+    var shapeFill = ShapePaint.none { didSet { notify() } }
     var brushKind: BrushKind = .normal { didSet { notify() } }
     /// When on, pixels of color 2 in a moved or pasted selection are see-through.
     var transparentSelection = false { didSet { notify() } }
@@ -143,22 +204,32 @@ final class EditorState {
     private var sizes: [String: Int] = [:]
     private var observers: [() -> Void] = []
 
-    /// Size choices for the current tool, in pixels; empty when size does not apply. Pencil,
-    /// eraser and shape sizes are Paint's; the brush sizes are this app's choice.
+    /// Paint's Size gallery for the current tool, in pixels (`CPBApp::AddTools`); empty when
+    /// size does not apply.
     var sizeOptions: [Int] {
         switch tool {
         case .pencil: [1, 2, 3, 4]
         case .eraser: [4, 6, 8, 10]
         case .shape: [1, 3, 5, 8]
-        case .brush: brushKind == .airbrush ? [8, 16, 24, 30] : [1, 3, 5, 8]
+        case .brush: brushKind.sizes
         case .select, .freeFormSelect, .text, .fill, .picker, .magnifier: []
         }
     }
 
-    private var sizeKey: String { tool == .brush ? "brush.\(brushKind)" : "\(tool)" }
+    /// The size each tool starts with (`CPBApp::InitializeAttributes` and the tool constructors).
+    private var defaultSize: Int {
+        switch tool {
+        case .eraser: 8
+        case .shape: 5
+        case .brush: brushKind.defaultSize
+        case .pencil, .select, .freeFormSelect, .text, .fill, .picker, .magnifier: 1
+        }
+    }
+
+    private var sizeKey: String { tool == .brush ? brushKind.sizeKey : "\(tool)" }
 
     var size: Int {
-        get { sizes[sizeKey] ?? sizeOptions.first ?? 1 }
+        get { sizes[sizeKey] ?? defaultSize }
         set {
             sizes[sizeKey] = newValue
             notify()
@@ -185,6 +256,20 @@ enum ClassicPalette {
         RGBA(255, 255, 255), RGBA(195, 195, 195), RGBA(185, 122, 87), RGBA(255, 174, 201), RGBA(255, 201, 14),
         RGBA(239, 228, 176), RGBA(181, 230, 29), RGBA(153, 217, 234), RGBA(112, 146, 190), RGBA(200, 191, 231),
     ]
+
+    /// Names for the swatches' tooltips and VoiceOver, in the order of `colors`.
+    static let names: [String] = [
+        localized("Black"), localized("Gray-50%"), localized("Dark red"), localized("Red"), localized("Orange"),
+        localized("Yellow"), localized("Green"), localized("Turquoise"), localized("Indigo"), localized("Purple"),
+        localized("White"), localized("Gray-25%"), localized("Brown"), localized("Rose"), localized("Gold"),
+        localized("Light yellow"), localized("Lime"), localized("Light turquoise"), localized("Blue-gray"), localized("Lavender"),
+    ]
+
+    /// The palette name of `color`, or its components for any other color.
+    static func name(of color: RGBA) -> String {
+        if let index = colors.firstIndex(of: color) { return names[index] }
+        return localized(format: "Red %ld, Green %ld, Blue %ld", Int(color.r), Int(color.g), Int(color.b))
+    }
 }
 
 extension RGBA {

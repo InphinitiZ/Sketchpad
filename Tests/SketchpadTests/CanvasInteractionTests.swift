@@ -96,7 +96,7 @@ private final class Harness {
 
         #expect(h.canvas.selection == nil)
         #expect(h.bitmap[point(12, 52)] == blue)
-        #expect(h.document.undoManager?.undoActionName == "Move Selection")
+        #expect(h.document.undoManager?.undoActionName == localized("Move Selection"))
     }
 
     @Test func cropShrinksCanvasAndUndoRestoresIt() {
@@ -218,7 +218,7 @@ private final class Harness {
         #expect(h.bitmap.width == 800)
 
         h.click(at: point(300, 300))
-        #expect(h.document.undoManager?.undoActionName == "Flip")
+        #expect(h.document.undoManager?.undoActionName == localized("Flip"))
     }
 
     @Test func resizeAndSkewIsOneUndoStep() {
@@ -283,12 +283,12 @@ private final class Harness {
         let h = Harness()
         h.state.tool = .shape
         h.state.shapeKind = .diamond
-        h.state.shapeFill = true
+        h.state.shapeFill = .solid
         h.state.secondary = blue
         h.drag(from: point(100, 100), to: point(200, 200))
         #expect(h.bitmap[point(150, 150)] == blue, "filled with color 2")
         #expect(h.bitmap[point(105, 105)] == .white, "diamond leaves the corners empty")
-        #expect(h.document.undoManager?.undoActionName == "Diamond")
+        #expect(h.document.undoManager?.undoActionName == ShapeKind.diamond.title)
     }
 
     @Test func curveTakesALineAndTwoBends() {
@@ -305,7 +305,7 @@ private final class Harness {
 
         h.drag(from: point(200, 100), to: point(250, 120))
         #expect(h.canvas.pendingShape == nil)
-        #expect(h.document.undoManager?.undoActionName == "Curve")
+        #expect(h.document.undoManager?.undoActionName == ShapeKind.curve.title)
         h.canvas.undo(nil)
         h.endEvent()
         #expect(h.bitmap[point(100, 300)] == .white)
@@ -315,7 +315,7 @@ private final class Harness {
         let h = Harness()
         h.state.tool = .shape
         h.state.shapeKind = .polygon
-        h.state.shapeFill = true
+        h.state.shapeFill = .solid
         h.state.secondary = blue
         h.drag(from: point(100, 100), to: point(300, 100))
         h.click(at: point(300, 300))
@@ -362,7 +362,7 @@ private final class Harness {
         h.drag(from: point(100, 100), to: point(200, 100))
         #expect(h.bitmap[point(150, 100)] == blue)
         #expect(h.bitmap[point(150, 97)] == blue, "the nib is 8 pixels tall when dragged sideways")
-        #expect(h.document.undoManager?.undoActionName == "Brushes")
+        #expect(h.document.undoManager?.undoActionName == Tool.brush.title)
     }
 
     @Test func airbrushKeepsSprayingWhileHeld() {

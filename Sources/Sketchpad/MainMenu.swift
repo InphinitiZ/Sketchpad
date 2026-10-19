@@ -7,78 +7,84 @@ enum MainMenu {
         let main = NSMenu()
 
         main.addItem(submenu(appName, [
-            item("About \(appName)", #selector(NSApplication.orderFrontStandardAboutPanel(_:))),
+            item(localized(format: "About %@", appName), #selector(NSApplication.orderFrontStandardAboutPanel(_:))),
             .separator(),
-            item("Hide \(appName)", #selector(NSApplication.hide(_:)), "h"),
-            item("Hide Others", #selector(NSApplication.hideOtherApplications(_:)), "h", [.command, .option]),
-            item("Show All", #selector(NSApplication.unhideAllApplications(_:))),
+            item(localized(format: "Hide %@", appName), #selector(NSApplication.hide(_:)), "h"),
+            item(localized("Hide Others"), #selector(NSApplication.hideOtherApplications(_:)), "h", [.command, .option]),
+            item(localized("Show All"), #selector(NSApplication.unhideAllApplications(_:))),
             .separator(),
-            item("Quit \(appName)", #selector(NSApplication.terminate(_:)), "q"),
+            item(localized(format: "Quit %@", appName), #selector(NSApplication.terminate(_:)), "q"),
         ]))
 
         // AppKit fills "Open Recent" itself once it finds a clearRecentDocuments: item.
-        let openRecent = submenu("Open Recent", [
-            item("Clear Menu", #selector(NSDocumentController.clearRecentDocuments(_:))),
+        let openRecent = submenu(localized("Open Recent"), [
+            item(localized("Clear Menu"), #selector(NSDocumentController.clearRecentDocuments(_:))),
         ])
-        main.addItem(submenu("File", [
-            item("New", #selector(NSDocumentController.newDocument(_:)), "n"),
-            item("Open…", #selector(NSDocumentController.openDocument(_:)), "o"),
+        // AppKit fills this item with Continuity Camera's choices (Take Photo, Scan Documents…).
+        let fromDevice = NSMenuItem(title: localized("Import from iPhone or iPad"), action: nil, keyEquivalent: "")
+        fromDevice.identifier = NSMenuItem.importFromDeviceIdentifier
+        main.addItem(submenu(localized("File"), [
+            item(localized("New"), #selector(NSDocumentController.newDocument(_:)), "n"),
+            item(localized("Open…"), #selector(NSDocumentController.openDocument(_:)), "o"),
             openRecent,
             .separator(),
-            item("Close", #selector(NSWindow.performClose(_:)), "w"),
-            item("Save", #selector(NSDocument.save(_:)), "s"),
-            item("Save As…", #selector(NSDocument.saveAs(_:)), "s", [.command, .shift]),
-            item("Revert to Saved", #selector(NSDocument.revertToSaved(_:))),
+            item(localized("From Scanner or Camera…"), #selector(AppDelegate.importFromScannerOrCamera(_:))),
+            fromDevice,
             .separator(),
-            item("Image Properties…", #selector(CanvasView.showImageProperties(_:)), "e"),
+            item(localized("Close"), #selector(NSWindow.performClose(_:)), "w"),
+            item(localized("Save"), #selector(NSDocument.save(_:)), "s"),
+            item(localized("Save As…"), #selector(NSDocument.saveAs(_:)), "s", [.command, .shift]),
+            item(localized("Revert to Saved"), #selector(NSDocument.revertToSaved(_:))),
             .separator(),
-            item("Page Setup…", #selector(NSDocument.runPageLayout(_:)), "p", [.command, .shift]),
-            item("Print…", #selector(NSDocument.printDocument(_:)), "p"),
+            item(localized("Image Properties…"), #selector(CanvasView.showImageProperties(_:)), "e"),
+            .separator(),
+            item(localized("Page Setup…"), #selector(NSDocument.runPageLayout(_:)), "p", [.command, .shift]),
+            item(localized("Print…"), #selector(NSDocument.printDocument(_:)), "p"),
         ]))
 
-        main.addItem(submenu("Edit", [
-            item("Undo", Selector(("undo:")), "z"),
-            item("Redo", Selector(("redo:")), "z", [.command, .shift]),
+        main.addItem(submenu(localized("Edit"), [
+            item(localized("Undo"), Selector(("undo:")), "z"),
+            item(localized("Redo"), Selector(("redo:")), "z", [.command, .shift]),
             .separator(),
-            item("Cut", #selector(CanvasView.cut(_:)), "x"),
-            item("Copy", #selector(CanvasView.copy(_:)), "c"),
-            item("Paste", #selector(CanvasView.paste(_:)), "v"),
-            item("Delete", #selector(CanvasView.delete(_:))),
-            item("Select All", #selector(NSText.selectAll(_:)), "a"),
+            item(localized("Cut"), #selector(CanvasView.cut(_:)), "x"),
+            item(localized("Copy"), #selector(CanvasView.copy(_:)), "c"),
+            item(localized("Paste"), #selector(CanvasView.paste(_:)), "v"),
+            item(localized("Delete"), #selector(CanvasView.delete(_:))),
+            item(localized("Select All"), #selector(NSText.selectAll(_:)), "a"),
             .separator(),
-            item("Transparent Selection", #selector(CanvasWindowController.toggleTransparentSelection(_:))),
+            item(localized("Transparent Selection"), #selector(CanvasWindowController.toggleTransparentSelection(_:))),
         ]))
 
         // Each command acts on the selection if there is one, else on the whole picture.
-        main.addItem(submenu("Image", [
-            item("Crop to Selection", #selector(CanvasView.crop(_:)), "x", [.command, .shift]),
-            item("Resize and Skew…", #selector(CanvasView.resizeAndSkew(_:)), "r", [.command, .option]),
+        main.addItem(submenu(localized("Image"), [
+            item(localized("Crop to Selection"), #selector(CanvasView.crop(_:)), "x", [.command, .shift]),
+            item(localized("Resize and Skew…"), #selector(CanvasView.resizeAndSkew(_:)), "r", [.command, .option]),
             .separator(),
-            item("Rotate Right 90°", #selector(CanvasView.rotateRight(_:))),
-            item("Rotate Left 90°", #selector(CanvasView.rotateLeft(_:))),
-            item("Rotate 180°", #selector(CanvasView.rotateHalfTurn(_:))),
+            item(localized("Rotate Right 90°"), #selector(CanvasView.rotateRight(_:))),
+            item(localized("Rotate Left 90°"), #selector(CanvasView.rotateLeft(_:))),
+            item(localized("Rotate 180°"), #selector(CanvasView.rotateHalfTurn(_:))),
             .separator(),
-            item("Flip Vertical", #selector(CanvasView.flipVertical(_:))),
-            item("Flip Horizontal", #selector(CanvasView.flipHorizontal(_:))),
+            item(localized("Flip Vertical"), #selector(CanvasView.flipVertical(_:))),
+            item(localized("Flip Horizontal"), #selector(CanvasView.flipHorizontal(_:))),
         ]))
 
-        main.addItem(submenu("View", [
-            item("Zoom In", #selector(CanvasWindowController.zoomIn(_:)), "="),
-            item("Zoom Out", #selector(CanvasWindowController.zoomOut(_:)), "-"),
-            item("Actual Size", #selector(CanvasWindowController.zoomToActualSize(_:)), "0"),
+        main.addItem(submenu(localized("View"), [
+            item(localized("Zoom In"), #selector(CanvasWindowController.zoomIn(_:)), "="),
+            item(localized("Zoom Out"), #selector(CanvasWindowController.zoomOut(_:)), "-"),
+            item(localized("Actual Size"), #selector(CanvasWindowController.zoomToActualSize(_:)), "0"),
             .separator(),
             // ⌘R is Paint's Ctrl+R; ⌘' is the Mac's usual grid shortcut (⌘G is Find Next).
-            item("Rulers", #selector(CanvasWindowController.toggleRulers(_:)), "r"),
-            item("Gridlines", #selector(CanvasWindowController.toggleGridlines(_:)), "'"),
-            item("Status Bar", #selector(CanvasWindowController.toggleStatusBar(_:))),
-            item("Thumbnail", #selector(CanvasWindowController.toggleThumbnail(_:))),
+            item(localized("Rulers"), #selector(CanvasWindowController.toggleRulers(_:)), "r"),
+            item(localized("Gridlines"), #selector(CanvasWindowController.toggleGridlines(_:)), "'"),
+            item(localized("Status Bar"), #selector(CanvasWindowController.toggleStatusBar(_:))),
+            item(localized("Thumbnail"), #selector(CanvasWindowController.toggleThumbnail(_:))),
         ]))
 
-        let window = submenu("Window", [
-            item("Minimize", #selector(NSWindow.performMiniaturize(_:)), "m"),
-            item("Zoom", #selector(NSWindow.performZoom(_:))),
+        let window = submenu(localized("Window"), [
+            item(localized("Minimize"), #selector(NSWindow.performMiniaturize(_:)), "m"),
+            item(localized("Zoom"), #selector(NSWindow.performZoom(_:))),
             .separator(),
-            item("Bring All to Front", #selector(NSApplication.arrangeInFront(_:))),
+            item(localized("Bring All to Front"), #selector(NSApplication.arrangeInFront(_:))),
         ])
         main.addItem(window)
         NSApp.windowsMenu = window.submenu

@@ -14,9 +14,9 @@ final class ImagePropertiesForm: NSObject, NSTextFieldDelegate {
 
         var title: String {
             switch self {
-            case .inches: "Inches"
-            case .centimeters: "Centimeters"
-            case .pixels: "Pixels"
+            case .inches: localized("Inches")
+            case .centimeters: localized("Centimeters")
+            case .pixels: localized("Pixels")
             }
         }
     }
@@ -28,7 +28,7 @@ final class ImagePropertiesForm: NSObject, NSTextFieldDelegate {
     let unitControl = NSSegmentedControl(labels: Unit.allCases.map(\.title), trackingMode: .selectOne, target: nil, action: nil)
     let widthField = NSTextField(string: "")
     let heightField = NSTextField(string: "")
-    let colorControl = NSSegmentedControl(labels: ["Black and white", "Color"], trackingMode: .selectOne, target: nil, action: nil)
+    let colorControl = NSSegmentedControl(labels: [localized("Black and white"), localized("Color")], trackingMode: .selectOne, target: nil, action: nil)
     private(set) var view = NSView()
     /// The size in pixels. Kept fractional so switching units back and forth does not drift.
     private var pixelWidth: Double
@@ -49,19 +49,19 @@ final class ImagePropertiesForm: NSObject, NSTextFieldDelegate {
             field.alignment = .right
             field.widthAnchor.constraint(equalToConstant: 90).isActive = true
         }
-        let defaultButton = NSButton(title: "Default", target: self, action: #selector(restoreDefaultSize))
+        let defaultButton = NSButton(title: localized("Default"), target: self, action: #selector(restoreDefaultSize))
 
-        let notAvailable = "Not Available"
+        let notAvailable = localized("Not Available")
         let saved = lastSaved.map { DateFormatter.localizedString(from: $0, dateStyle: .medium, timeStyle: .short) } ?? notAvailable
         let disk = sizeOnDisk.map { ByteCountFormatter.string(fromByteCount: Int64($0), countStyle: .file) } ?? notAvailable
         let grid = NSGridView(views: [
-            [label("Last Saved:"), label(saved)],
-            [label("Size on disk:"), label(disk)],
-            [label("Resolution:"), label("\(Int(dotsPerInch.rounded())) DPI")],
-            [label("Units:"), unitControl],
-            [label("Width:"), widthField],
-            [label("Height:"), heightField],
-            [label("Colors:"), colorControl],
+            [label(localized("Last Saved:")), label(saved)],
+            [label(localized("Size on disk:")), label(disk)],
+            [label(localized("Resolution:")), label(localized(format: "%ld DPI", Int(dotsPerInch.rounded())))],
+            [label(localized("Units:")), unitControl],
+            [label(localized("Width:")), widthField],
+            [label(localized("Height:")), heightField],
+            [label(localized("Colors:")), colorControl],
             [NSGridCell.emptyContentView, defaultButton],
         ])
         grid.rowSpacing = 8
@@ -90,10 +90,10 @@ final class ImagePropertiesForm: NSObject, NSTextFieldDelegate {
             sizeOnDisk: size
         )
         let alert = NSAlert()
-        alert.messageText = "Image Properties"
+        alert.messageText = localized("Image Properties")
         alert.accessoryView = form.view
-        alert.addButton(withTitle: "OK")
-        alert.addButton(withTitle: "Cancel")
+        alert.addButton(withTitle: localized("OK"))
+        alert.addButton(withTitle: localized("Cancel"))
         alert.beginSheetModal(for: window) { response in
             if response == .alertFirstButtonReturn { completion(form.result) }
         }

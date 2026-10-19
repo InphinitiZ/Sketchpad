@@ -67,6 +67,16 @@ public struct PixelRect: Hashable, Sendable {
     public var maxY: Int { y + height }
     public var cgRect: CGRect { CGRect(x: x, y: y, width: width, height: height) }
 
+    public func contains(_ p: PixelPoint) -> Bool {
+        p.x >= x && p.y >= y && p.x < maxX && p.y < maxY
+    }
+
+    /// Whether `other` lies wholly inside; an empty rectangle is inside any non-empty one.
+    public func contains(_ other: PixelRect) -> Bool {
+        guard !other.isEmpty else { return !isEmpty }
+        return other.x >= x && other.y >= y && other.maxX <= maxX && other.maxY <= maxY
+    }
+
     public func union(_ other: PixelRect) -> PixelRect {
         if isEmpty { return other }
         if other.isEmpty { return self }

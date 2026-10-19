@@ -20,7 +20,11 @@ targets:
   Sketchpad:
     type: application
     platform: macOS
-    sources: [Sources/Sketchpad]
+    sources:
+      - Sources/Sketchpad
+      # The .lproj string tables; Info.plist is processed, not copied.
+      - path: Support
+        excludes: [Info.plist]
     dependencies:
       - target: PaintCore
     settings:

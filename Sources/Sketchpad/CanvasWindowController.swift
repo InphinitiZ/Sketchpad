@@ -19,11 +19,18 @@ final class CanvasWindowController: NSWindowController {
     private let fillPopup = NSPopUpButton()
     private var brushOptions = NSStackView()
     private var shapeOptions = NSStackView()
-    private let transparentCheckbox = NSButton(checkboxWithTitle: "Transparent selection", target: nil, action: nil)
+    private let transparentCheckbox = NSButton(checkboxWithTitle: localized("Transparent selection"), target: nil, action: nil)
     private let fontPopup = NSPopUpButton()
     private let pointSizePopup = NSPopUpButton()
-    private let textStyleControl = NSSegmentedControl(labels: ["B", "I", "U"], trackingMode: .selectAny, target: nil, action: nil)
-    private let opaqueCheckbox = NSButton(checkboxWithTitle: "Opaque background", target: nil, action: nil)
+    private let textStyleControl = NSSegmentedControl(
+        images: [
+            NSImage(systemSymbolName: "bold", accessibilityDescription: localized("Bold"))!,
+            NSImage(systemSymbolName: "italic", accessibilityDescription: localized("Italic"))!,
+            NSImage(systemSymbolName: "underline", accessibilityDescription: localized("Underline"))!,
+        ],
+        trackingMode: .selectAny, target: nil, action: nil
+    )
+    private let opaqueCheckbox = NSButton(checkboxWithTitle: localized("Opaque background"), target: nil, action: nil)
     private var textOptions = NSStackView()
     private let primarySwatch = ColorSwatch(size: 30)
     private let secondarySwatch = ColorSwatch(size: 30)
@@ -55,7 +62,7 @@ final class CanvasWindowController: NSWindowController {
             self?.updateStatus()
         }
         canvasView.onCursorMove = { [weak self] p in
-            self?.cursorLabel.stringValue = p.map { "\($0.x), \($0.y) px" } ?? ""
+            self?.cursorLabel.stringValue = p.map { localized(format: "%ld, %ld px", $0.x, $0.y) } ?? ""
         }
         canvasView.onZoomRequest = { [weak self] zoomIn, center in
             self?.stepZoom(up: zoomIn, centeredAt: center)
@@ -151,6 +158,7 @@ final class CanvasWindowController: NSWindowController {
 
         sizePopup.target = self
         sizePopup.action = #selector(sizeChanged(_:))
+        sizePopup.setAccessibilityLabel(localized("Size"))
         brushOptions = makeBrushOptions()
         shapeOptions = makeShapeOptions()
         transparentCheckbox.target = self
@@ -159,9 +167,11 @@ final class CanvasWindowController: NSWindowController {
 
         primarySwatch.onClick = { [weak self] _ in self?.editColor(secondary: false) }
         secondarySwatch.onClick = { [weak self] _ in self?.editColor(secondary: true) }
+        primarySwatch.title = localized("Color 1")
+        secondarySwatch.title = localized("Color 2")
         let colorPair = NSStackView(views: [
-            labeled(primarySwatch, "Color 1"),
-            labeled(secondarySwatch, "Color 2"),
+            labeled(primarySwatch, localized("Color 1")),
+            labeled(secondarySwatch, localized("Color 2")),
         ])
         colorPair.spacing = 12
 
@@ -169,6 +179,7 @@ final class CanvasWindowController: NSWindowController {
         let swatches = ClassicPalette.colors.map { color -> NSView in
             let swatch = ColorSwatch(size: 20)
             swatch.color = color
+            swatch.secondaryActionName = localized("Set as Color 2")
             swatch.onClick = { [weak self] secondary in
                 if secondary { self?.state.secondary = color } else { self?.state.primary = color }
             }
@@ -180,11 +191,11 @@ final class CanvasWindowController: NSWindowController {
         palette.columnSpacing = 3
 
         let stack = NSStackView(views: [
-            heading("Tools"), toolGrid,
+            heading(localized("Tools")), toolGrid,
             brushOptions, shapeOptions,
-            heading("Size"), sizePopup, transparentCheckbox,
+            heading(localized("Size")), sizePopup, transparentCheckbox,
             textOptions,
-            heading("Colors"), colorPair, palette,
+            heading(localized("Colors")), colorPair, palette,
         ])
         stack.orientation = .vertical
         stack.alignment = .leading
@@ -202,7 +213,8 @@ final class CanvasWindowController: NSWindowController {
         brushPopup.target = self
         brushPopup.action = #selector(brushChanged(_:))
         brushPopup.controlSize = .small
-        let stack = NSStackView(views: [heading("Brush"), brushPopup])
+        brushPopup.setAccessibilityLabel(localized("Brush"))
+        let stack = NSStackView(views: [heading(localized("Brush")), brushPopup])
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 6
@@ -215,15 +227,18 @@ final class CanvasWindowController: NSWindowController {
             shapePopup.addItem(withTitle: kind.title)
             shapePopup.lastItem?.image = Self.icon(for: kind)
         }
-        outlinePopup.addItems(withTitles: ["No outline", "Solid color"])
-        fillPopup.addItems(withTitles: ["No fill", "Solid color"])
+        outlinePopup.addItems(withTitles: ShapePaint.allCases.map { $0.title(forOutline: true) })
+        fillPopup.addItems(withTitles: ShapePaint.allCases.map { $0.title(forOutline: false) })
         for popup in [shapePopup, outlinePopup, fillPopup] {
             popup.target = self
             popup.action = #selector(shapeOptionsChanged(_:))
             popup.controlSize = .small
         }
         shapePopup.widthAnchor.constraint(equalToConstant: 126).isActive = true
-        let stack = NSStackView(views: [heading("Shape"), shapePopup, label("Outline"), outlinePopup, label("Fill"), fillPopup])
+        shapePopup.setAccessibilityLabel(localized("Shape"))
+        outlinePopup.setAccessibilityLabel(localized("Outline"))
+        fillPopup.setAccessibilityLabel(localized("Fill"))
+        let stack = NSStackView(views: [heading(localized("Shape")), shapePopup, label(localized("Outline")), outlinePopup, label(localized("Fill")), fillPopup])
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 4
@@ -280,23 +295,25 @@ final class CanvasWindowController: NSWindowController {
         fontPopup.action = #selector(textStyleChanged(_:))
         fontPopup.widthAnchor.constraint(equalToConstant: 126).isActive = true
         fontPopup.controlSize = .small
+        fontPopup.setAccessibilityLabel(localized("Font"))
 
-        pointSizePopup.addItems(withTitles: TextStyle.pointSizes.map { "\(Int($0)) pt" })
+        pointSizePopup.addItems(withTitles: TextStyle.pointSizes.map { localized(format: "%ld pt", Int($0)) })
         pointSizePopup.target = self
         pointSizePopup.action = #selector(textStyleChanged(_:))
         pointSizePopup.controlSize = .small
+        pointSizePopup.setAccessibilityLabel(localized("Font size"))
 
         textStyleControl.target = self
         textStyleControl.action = #selector(textStyleChanged(_:))
         textStyleControl.controlSize = .small
-        for (index, label) in ["Bold", "Italic", "Underline"].enumerated() {
-            textStyleControl.setToolTip(label, forSegment: index)
+        for index in 0..<textStyleControl.segmentCount {
+            textStyleControl.setToolTip(textStyleControl.image(forSegment: index)?.accessibilityDescription, forSegment: index)
         }
 
         opaqueCheckbox.target = self
         opaqueCheckbox.action = #selector(textStyleChanged(_:))
 
-        let stack = NSStackView(views: [heading("Text"), fontPopup, pointSizePopup, textStyleControl, opaqueCheckbox])
+        let stack = NSStackView(views: [heading(localized("Text")), fontPopup, pointSizePopup, textStyleControl, opaqueCheckbox])
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 6
@@ -310,6 +327,7 @@ final class CanvasWindowController: NSWindowController {
         button.bezelStyle = .smallSquare
         button.tag = tool.rawValue
         button.toolTip = tool.shortcut.map { "\(tool.title) (\($0.uppercased()))" } ?? tool.title
+        button.setAccessibilityLabel(tool.title)
         button.widthAnchor.constraint(equalToConstant: 56).isActive = true
         button.heightAnchor.constraint(equalToConstant: 32).isActive = true
         toolButtons[tool] = button
@@ -341,7 +359,7 @@ final class CanvasWindowController: NSWindowController {
 
         let options = state.sizeOptions
         sizePopup.removeAllItems()
-        sizePopup.addItems(withTitles: options.isEmpty ? ["—"] : options.map { "\($0) px" })
+        sizePopup.addItems(withTitles: options.isEmpty ? ["—"] : options.map { localized(format: "%ld px", $0) })
         sizePopup.isEnabled = !options.isEmpty
         if let index = options.firstIndex(of: state.size) { sizePopup.selectItem(at: index) }
 
@@ -349,10 +367,9 @@ final class CanvasWindowController: NSWindowController {
         brushPopup.selectItem(at: BrushKind.allCases.firstIndex(of: state.brushKind) ?? 0)
         shapeOptions.isHidden = state.tool != .shape
         shapePopup.selectItem(at: ShapeKind.allCases.firstIndex(of: state.shapeKind) ?? 0)
-        outlinePopup.selectItem(at: state.shapeOutline ? 1 : 0)
-        fillPopup.selectItem(at: state.shapeFill ? 1 : 0)
-        // Lines and curves are always outlined and never filled.
-        outlinePopup.isEnabled = state.shapeKind.canFill
+        outlinePopup.selectItem(at: ShapePaint.allCases.firstIndex(of: state.shapeOutline) ?? 1)
+        fillPopup.selectItem(at: ShapePaint.allCases.firstIndex(of: state.shapeFill) ?? 0)
+        // Lines and curves are never filled.
         fillPopup.isEnabled = state.shapeKind.canFill
         transparentCheckbox.state = state.transparentSelection ? .on : .off
 
@@ -372,7 +389,7 @@ final class CanvasWindowController: NSWindowController {
 
     private func updateStatus() {
         guard let bitmap = (document as? CanvasDocument)?.bitmap else { return }
-        sizeLabel.stringValue = "\(bitmap.width) × \(bitmap.height) px"
+        sizeLabel.stringValue = localized(format: "%ld × %ld px", bitmap.width, bitmap.height)
         zoomLabel.stringValue = "\(Int((scrollView.magnification * 100).rounded()))%"
     }
 
@@ -394,8 +411,8 @@ final class CanvasWindowController: NSWindowController {
 
     @objc private func shapeOptionsChanged(_ sender: NSPopUpButton) {
         state.shapeKind = ShapeKind.allCases[max(0, shapePopup.indexOfSelectedItem)]
-        state.shapeOutline = outlinePopup.indexOfSelectedItem == 1
-        state.shapeFill = fillPopup.indexOfSelectedItem == 1
+        state.shapeOutline = ShapePaint.allCases[max(0, outlinePopup.indexOfSelectedItem)]
+        state.shapeFill = ShapePaint.allCases[max(0, fillPopup.indexOfSelectedItem)]
     }
 
     /// Sidebar checkbox and Edit menu item.
@@ -529,10 +546,22 @@ private final class FlippedClipView: NSClipView {
 }
 
 /// A clickable color square. Reports whether the click was secondary (right or control-click).
+/// VoiceOver sees a button named after its color.
 final class ColorSwatch: NSView {
     var color: RGBA = .black {
-        didSet { needsDisplay = true }
+        didSet {
+            needsDisplay = true
+            if title == nil { toolTip = ClassicPalette.name(of: color) }
+        }
     }
+
+    /// The swatch's role ("Color 1"); its color is then read as the value.
+    var title: String? {
+        didSet { toolTip = title }
+    }
+
+    /// VoiceOver's stand-in for the right click, for swatches where it does something else.
+    var secondaryActionName: String?
 
     var onClick: ((_ secondary: Bool) -> Void)?
     private let side: CGFloat
@@ -561,6 +590,26 @@ final class ColorSwatch: NSView {
 
     override func rightMouseDown(with event: NSEvent) {
         onClick?(true)
+    }
+
+    // MARK: - Accessibility
+
+    override func isAccessibilityElement() -> Bool { true }
+    override func accessibilityRole() -> NSAccessibility.Role? { .button }
+    override func accessibilityLabel() -> String? { title ?? ClassicPalette.name(of: color) }
+    override func accessibilityValue() -> Any? { title == nil ? nil : ClassicPalette.name(of: color) }
+
+    override func accessibilityPerformPress() -> Bool {
+        onClick?(false)
+        return true
+    }
+
+    override func accessibilityCustomActions() -> [NSAccessibilityCustomAction]? {
+        guard let secondaryActionName else { return nil }
+        return [NSAccessibilityCustomAction(name: secondaryActionName) { [weak self] in
+            self?.onClick?(true)
+            return true
+        }]
     }
 }
 

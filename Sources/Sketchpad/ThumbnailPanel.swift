@@ -19,7 +19,7 @@ final class ThumbnailPanel {
             backing: .buffered,
             defer: true
         )
-        panel.title = "Thumbnail"
+        panel.title = localized("Thumbnail")
         panel.isFloatingPanel = true
         panel.hidesOnDeactivate = true
         panel.contentView = view
@@ -109,6 +109,10 @@ private final class ThumbnailView: NSView {
         outline.lineWidth = 1
         outline.stroke()
     }
+
+    override func isAccessibilityElement() -> Bool { true }
+    override func accessibilityRole() -> NSAccessibility.Role? { .image }
+    override func accessibilityLabel() -> String? { localized("Thumbnail") }
 
     override func mouseDown(with event: NSEvent) {
         jump(to: event)

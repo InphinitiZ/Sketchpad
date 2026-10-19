@@ -14,7 +14,7 @@ final class CanvasView: NSView {
     /// The current selection, from when it is made until it is deselected.
     var selection: SelectionSession?
     /// Undo title for the selection when it is committed ("Move", "Paste", …).
-    var selectionActionName = "Selection"
+    var selectionActionName = localized("Selection")
     /// The open text box, if any.
     var textBox: TextBox?
     /// A curve or polygon that takes several clicks to finish.
@@ -61,6 +61,10 @@ final class CanvasView: NSView {
         let before: [UInt32]
         var dirty = PixelRect.zero
         var shapeArea = PixelRect.zero
+        /// A textured brush's footprint, composited over `before` as it grows.
+        var layer: MediumLayer?
+        /// The textured stroke's width at `last`, which pen pressure changes as it goes.
+        var lastWidth = 0.0
     }
 
     init(document: CanvasDocument, state: EditorState) {
@@ -210,6 +214,25 @@ final class CanvasView: NSView {
         context.restoreGState()
     }
 
+    // MARK: - Accessibility
+
+    override func isAccessibilityElement() -> Bool { true }
+    override func accessibilityRole() -> NSAccessibility.Role? { .image }
+
+    override func accessibilityLabel() -> String? {
+        localized(format: "Canvas, %ld × %ld px", document.bitmap.width, document.bitmap.height)
+    }
+
+    override func accessibilityHelp() -> String? { state.tool.title }
+
+    /// Tells VoiceOver users which tool a key press picked.
+    private func announce(_ text: String) {
+        NSAccessibility.post(element: self, notification: .announcementRequested, userInfo: [
+            .announcement: text,
+            .priority: NSAccessibilityPriorityLevel.medium.rawValue,
+        ])
+    }
+
     override func resetCursorRects() {
         addCursorRect(bounds, cursor: state.tool == .magnifier ? .pointingHand : .crosshair)
     }
@@ -292,7 +315,7 @@ final class CanvasView: NSView {
         case .shape where pendingShape != nil:
             continuePendingShape(at: p, clickCount: event.clickCount)
         case .pencil, .brush, .eraser, .shape:
-            let stroke = Stroke(
+            var stroke = Stroke(
                 tool: state.tool,
                 shapeKind: state.tool == .shape ? state.shapeKind : nil,
                 usesSecondary: secondary,
@@ -300,8 +323,14 @@ final class CanvasView: NSView {
                 last: p,
                 before: bitmap.copyPixels()
             )
+            if state.tool == .brush, let medium = state.brushKind.medium {
+                // Each stroke gets its own texture variation, fixed by where it starts.
+                let seed = UInt32(truncatingIfNeeded: p.x &* 73_856_093 ^ p.y &* 19_349_663)
+                stroke.layer = MediumLayer(medium: medium, color: drawingColor(for: stroke), limit: bitmap.bounds, seed: seed)
+                stroke.lastWidth = medium.strokeWidth(size: state.size, pressure: Self.pressure(of: event))
+            }
             drag = .stroke(stroke)
-            if stroke.shapeKind == nil { extend(stroke, to: p, constrained: false) }
+            if stroke.shapeKind == nil { extend(stroke, to: p, constrained: false, pressure: Self.pressure(of: event)) }
             if state.tool == .brush, state.brushKind == .airbrush { startAirbrush() }
         }
     }
@@ -311,7 +340,7 @@ final class CanvasView: NSView {
         reportCursor(p)
         switch drag {
         case let .stroke(stroke):
-            extend(stroke, to: p, constrained: event.modifierFlags.contains(.shift))
+            extend(stroke, to: p, constrained: event.modifierFlags.contains(.shift), pressure: Self.pressure(of: event))
         case let .marquee(start, _):
             drag = .marquee(start: start, end: p)
             needsDisplay = true
@@ -363,7 +392,13 @@ final class CanvasView: NSView {
 
     // MARK: - Strokes
 
-    func extend(_ stroke: Stroke, to p: PixelPoint, constrained: Bool) {
+    /// Pen pressure from 0 to 1, or `nil` for a mouse or trackpad. Paint reads it from tablet
+    /// packets only (`CRTSPacketHandler::ProcessPacket`).
+    static func pressure(of event: NSEvent) -> Double? {
+        event.subtype == .tabletPoint ? Double(event.pressure) : nil
+    }
+
+    func extend(_ stroke: Stroke, to p: PixelPoint, constrained: Bool, pressure: Double? = nil) {
         var stroke = stroke
         let bitmap = document.bitmap
         let changed: PixelRect
@@ -381,6 +416,13 @@ final class CanvasView: NSView {
             changed = stroke.shapeArea.union(drawn)
             stroke.shapeArea = drawn
             stroke.last = end
+        } else if let layer = stroke.layer {
+            // Only the textured brushes respond to pressure; Paint's other tools ignore it.
+            let width = layer.medium.strokeWidth(size: state.size, pressure: pressure)
+            changed = layer.addSegment(from: Self.center(of: stroke.last), width: stroke.lastWidth, to: Self.center(of: p), width: width)
+            bitmap.composite(layer, in: changed, over: stroke.before)
+            stroke.last = p
+            stroke.lastWidth = width
         } else if stroke.tool == .brush {
             let color = drawingColor(for: stroke)
             switch state.brushKind {
@@ -390,6 +432,8 @@ final class CanvasView: NSView {
                 changed = bitmap.drawCalligraphyLine(from: stroke.last, to: p, width: state.size, kind: state.brushKind, color: color)
             case .airbrush:
                 changed = bitmap.spray(at: p, size: state.size, color: color, using: &airbrushRandom)
+            case .oil, .crayon, .marker, .naturalPencil, .watercolor:
+                changed = .zero // drawn through `stroke.layer` above
             }
             stroke.last = p
         } else {
@@ -422,14 +466,23 @@ final class CanvasView: NSView {
         stroke.usesSecondary ? state.secondary : state.primary
     }
 
+    private static func center(of p: PixelPoint) -> CGPoint {
+        CGPoint(x: CGFloat(p.x) + 0.5, y: CGFloat(p.y) + 0.5)
+    }
+
     /// Left drag: outline in color 1, fill in color 2. Right drag swaps them.
     func shapeStyle(usesSecondary: Bool, kind: ShapeKind) -> ShapeStyle {
         let outline = usesSecondary ? state.secondary : state.primary
         let fill = usesSecondary ? state.primary : state.secondary
+        // Lines and curves always have an outline and never a fill.
+        let outlinePaint = !kind.canFill && state.shapeOutline == .none ? .solid : state.shapeOutline
+        let fillPaint = kind.canFill ? state.shapeFill : .none
         return ShapeStyle(
-            outline: state.shapeOutline || !kind.canFill ? outline : nil,
-            fill: state.shapeFill && kind.canFill ? fill : nil,
-            lineWidth: state.size
+            outline: outlinePaint == .none ? nil : outline,
+            fill: fillPaint == .none ? nil : fill,
+            lineWidth: state.size,
+            outlineMedium: outlinePaint.medium,
+            fillMedium: fillPaint.medium
         )
     }
 
@@ -461,7 +514,7 @@ final class CanvasView: NSView {
 
     func select(_ mask: SelectionMask) {
         selection = SelectionSession(bitmap: document.bitmap, mask: mask)
-        selectionActionName = "Move Selection"
+        selectionActionName = localized("Move Selection")
         needsDisplay = true
     }
 
@@ -559,6 +612,7 @@ final class CanvasView: NSView {
            let key = event.charactersIgnoringModifiers?.lowercased().first,
            let tool = Tool.allCases.first(where: { $0.shortcut == key }) {
             state.tool = tool
+            announce(tool.title)
             return
         }
         super.keyDown(with: event)

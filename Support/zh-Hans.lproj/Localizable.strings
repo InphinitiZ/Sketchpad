@@ -1,0 +1,196 @@
+/* Simplified Chinese. Keys are the English text used in the code. */
+
+/* Tools */
+"Rectangular Selection" = "矩形选择";
+"Free-form Selection" = "自由图形选择";
+"Text" = "文本";
+"Pencil" = "铅笔";
+"Brushes" = "刷子";
+"Eraser" = "橡皮擦";
+"Fill with Color" = "用颜色填充";
+"Color Picker" = "颜色选取器";
+"Magnifier" = "放大镜";
+"Shapes" = "形状";
+
+/* Brushes */
+"Brush" = "刷子";
+"Calligraphy Brush 1" = "书法笔刷 1";
+"Calligraphy Brush 2" = "书法笔刷 2";
+"Airbrush" = "喷枪";
+
+/* Shapes */
+"Line" = "直线";
+"Curve" = "曲线";
+"Oval" = "椭圆形";
+"Rectangle" = "矩形";
+"Rounded Rectangle" = "圆角矩形";
+"Polygon" = "多边形";
+"Triangle" = "三角形";
+"Right Triangle" = "直角三角形";
+"Diamond" = "菱形";
+"Pentagon" = "五边形";
+"Hexagon" = "六边形";
+"Right Arrow" = "右箭头";
+"Left Arrow" = "左箭头";
+"Up Arrow" = "上箭头";
+"Down Arrow" = "下箭头";
+"Four-point Star" = "四角星";
+"Five-point Star" = "五角星";
+"Six-point Star" = "六角星";
+"Rounded Rectangular Callout" = "圆角矩形标注";
+"Oval Callout" = "椭圆形标注";
+"Cloud Callout" = "云形标注";
+"Heart" = "心形";
+"Lightning" = "闪电形";
+
+/* Menus */
+"About %@" = "关于“%@”";
+"Hide %@" = "隐藏“%@”";
+"Hide Others" = "隐藏其他";
+"Show All" = "全部显示";
+"Quit %@" = "退出“%@”";
+"File" = "文件";
+"New" = "新建";
+"Open…" = "打开…";
+"Open Recent" = "打开最近使用";
+"Clear Menu" = "清除菜单";
+"Close" = "关闭";
+"Save" = "存储";
+"Save As…" = "存储为…";
+"Revert to Saved" = "复原到上次存储的版本";
+"Image Properties…" = "图像属性…";
+"Page Setup…" = "页面设置…";
+"Print…" = "打印…";
+"Edit" = "编辑";
+"Undo" = "撤销";
+"Redo" = "重做";
+"Cut" = "剪切";
+"Copy" = "拷贝";
+"Paste" = "粘贴";
+"Delete" = "删除";
+"Select All" = "全选";
+"Transparent Selection" = "透明选择";
+"Image" = "图像";
+"Crop to Selection" = "裁剪到选区";
+"Resize and Skew…" = "调整大小和扭曲…";
+"Rotate Right 90°" = "向右旋转 90°";
+"Rotate Left 90°" = "向左旋转 90°";
+"Rotate 180°" = "旋转 180°";
+"Flip Vertical" = "垂直翻转";
+"Flip Horizontal" = "水平翻转";
+"View" = "查看";
+"Zoom In" = "放大";
+"Zoom Out" = "缩小";
+"Actual Size" = "实际大小";
+"Rulers" = "标尺";
+"Gridlines" = "网格线";
+"Status Bar" = "状态栏";
+"Thumbnail" = "缩略图";
+"Window" = "窗口";
+"Minimize" = "最小化";
+"Zoom" = "缩放";
+"Bring All to Front" = "前置全部窗口";
+
+/* Undo action names */
+"Selection" = "选区";
+"Move Selection" = "移动选区";
+"Crop" = "裁剪";
+"Rotate" = "旋转";
+"Flip" = "翻转";
+
+/* Sidebar and status bar */
+"Tools" = "工具";
+"Size" = "粗细";
+"Colors" = "颜色";
+"Color 1" = "颜色 1";
+"Color 2" = "颜色 2";
+"Shape" = "形状";
+"Outline" = "轮廓";
+"Fill" = "填充";
+"No outline" = "无轮廓线";
+"No fill" = "无填充";
+"Solid color" = "纯色";
+"Transparent selection" = "透明选择";
+"Bold" = "粗体";
+"Italic" = "斜体";
+"Underline" = "下划线";
+"Opaque background" = "不透明背景";
+"%ld px" = "%ld 像素";
+"%ld pt" = "%ld 磅";
+"%ld, %ld px" = "%1$ld, %2$ld 像素";
+"%ld × %ld px" = "%1$ld × %2$ld 像素";
+
+/* Resize and Skew */
+"Resize and Skew" = "调整大小和扭曲";
+"Resize" = "重新调整大小";
+"Percentage" = "百分比";
+"Pixels" = "像素";
+"Horizontal:" = "水平：";
+"Vertical:" = "垂直：";
+"Maintain aspect ratio" = "保持纵横比";
+"Skew (degrees)" = "倾斜（角度）";
+"OK" = "好";
+"Cancel" = "取消";
+
+/* Image Properties */
+"Image Properties" = "图像属性";
+"Last Saved:" = "上次保存时间：";
+"Size on disk:" = "磁盘上的大小：";
+"Resolution:" = "分辨率：";
+"%ld DPI" = "%ld DPI";
+"Not Available" = "不可用";
+"Units:" = "单位：";
+"Inches" = "英寸";
+"Centimeters" = "厘米";
+"Width:" = "宽度：";
+"Height:" = "高度：";
+"Colors:" = "颜色：";
+"Black and white" = "黑白";
+"Color" = "彩色";
+"Default" = "默认值";
+
+/* Palette (tooltips and VoiceOver) */
+"Black" = "黑色";
+"Gray-50%" = "灰色-50%";
+"Dark red" = "深红色";
+"Red" = "红色";
+"Orange" = "橙色";
+"Yellow" = "黄色";
+"Green" = "绿色";
+"Turquoise" = "青绿色";
+"Indigo" = "靛青";
+"Purple" = "紫色";
+"White" = "白色";
+"Gray-25%" = "灰色-25%";
+"Brown" = "褐色";
+"Rose" = "玫瑰色";
+"Gold" = "金色";
+"Light yellow" = "浅黄色";
+"Lime" = "酸橙色";
+"Light turquoise" = "浅青绿色";
+"Blue-gray" = "蓝灰色";
+"Lavender" = "淡紫色";
+"Red %ld, Green %ld, Blue %ld" = "红 %1$ld，绿 %2$ld，蓝 %3$ld";
+"Set as Color 2" = "设为颜色 2";
+
+/* VoiceOver */
+"Canvas, %ld × %ld px" = "画布，%1$ld × %2$ld 像素";
+"Font" = "字体";
+"Font size" = "字号";
+
+/* Scanner, camera and Continuity Camera */
+"From Scanner or Camera…" = "从扫描仪或照相机获取…";
+"From Scanner or Camera" = "从扫描仪或照相机获取";
+"Import from iPhone or iPad" = "从 iPhone 或 iPad 导入";
+"Select a scanner or camera." = "请选择扫描仪或照相机。";
+"Scan" = "扫描";
+
+/* Textured brushes, outlines and fills */
+"Oil Brush" = "油画刷";
+"Crayon" = "蜡笔";
+"Marker" = "记号笔";
+"Natural Pencil" = "自然铅笔";
+"Watercolor Brush" = "水彩画刷";
+"Oil" = "油画";
+"Natural pencil" = "自然铅笔";
+"Watercolor" = "水彩";
